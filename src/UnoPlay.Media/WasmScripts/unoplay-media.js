@@ -4,7 +4,12 @@
     "use strict";
     const frequencies = [60, 170, 310, 600, 1000, 3000, 6000, 12000, 14000, 16000];
     const players = new Map();
-    let nextId = 0;
+    const transportActions = ["play","pause","stop","previoustrack","nexttrack","seekto","seekforward","seekbackward"];
+    let sessionOwner;
+    function setAction(action, handler) {
+        try { navigator.mediaSession.setActionHandler(action, handler); }
+        catch (error) { if (error.name !== "NotSupportedError") throw error; }
+    }
 
     class BrowserPlayer {
         constructor(notify) {
@@ -12,10 +17,12 @@
             this.volume = 1;
             this.balance = 0;
             this.eq = [0, ...frequencies.map(() => 0)];
-            this.root = document.createElement("div");
-            this.root.id = "unoplay-media-" + ++nextId;
-            this.root.style.cssText = "background:#000;overflow:hidden;pointer-events:none;width:0;height:0";
-            document.body.append(this.root);
+        }
+
+        attach(root) {
+            this.root = root;
+            root.dataset.unoplayMedia = "";
+            Object.assign(root.style, {background:"#000", overflow:"hidden", width:"100%", height:"100%"});
         }
 
         releaseTrack() {
@@ -47,10 +54,22 @@
             if (remote && !direct) media.crossOrigin = "anonymous";
             this.root.replaceChildren(media);
             const signal = (this.listeners = new AbortController()).signal;
-            for (const event of ["loadedmetadata", "durationchange", "play", "pause", "playing", "resize", "canplay"]) {
-                media.addEventListener(event, () => this.notify("state", ""), {signal});
+            for (const event of ["loadedmetadata", "durationchange", "play", "pause", "playing", "resize", "canplay", "seeked", "ratechange"]) {
+                media.addEventListener(event, () => {
+                    this.syncSession();
+                    this.notify("state", "");
+                }, {signal});
             }
-            media.addEventListener("ended", () => this.notify("ended", ""), {signal});
+            const fullscreenChanged = () => {
+                const full = document.fullscreenElement === media || !!media.webkitDisplayingFullscreen;
+                media.controls = full;
+                media.style.pointerEvents = full ? "auto" : "";
+                this.notify("state", "");
+            };
+            document.addEventListener("fullscreenchange", fullscreenChanged, {signal});
+            media.addEventListener("webkitbeginfullscreen", fullscreenChanged, {signal});
+            media.addEventListener("webkitendfullscreen", fullscreenChanged, {signal});
+            media.addEventListener("ended", () => { this.syncSession(); this.notify("ended", ""); }, {signal});
             const hls = /\.m3u8?$/i.test(this.url.pathname) && !media.canPlayType("application/vnd.apple.mpegurl");
             media.addEventListener("error", () => {
                 // Radio streams often permit native playback but not Web Audio.
@@ -150,10 +169,41 @@
             ramp(this.output.gain, this.volume);
         }
 
+        activateSession() {
+            if (!navigator.mediaSession || sessionOwner === this) return;
+            sessionOwner = this;
+            for (const action of transportActions) setAction(action, details => {
+                if (action === "seekto") this.seek(details.seekTime);
+                else if (action === "seekforward" || action === "seekbackward") {
+                    const offset = details.seekOffset ?? 5;
+                    this.seek(this.media.currentTime + (action === "seekforward" ? offset : -offset));
+                } else this.notify("command", action);
+            });
+            this.publishMetadata();
+            this.syncSession();
+        }
+
+        publishMetadata() {
+            if (sessionOwner === this && globalThis.MediaMetadata)
+                navigator.mediaSession.metadata = this.tags?.title ? new MediaMetadata(this.tags) : null;
+        }
+
+        syncSession() {
+            if (sessionOwner !== this) return;
+            const m = this.media, session = navigator.mediaSession;
+            session.playbackState = !m || m.ended ? "none" : m.paused ? "paused" : "playing";
+            if (!session.setPositionState) return;
+            if (Number.isFinite(m?.duration) && m.duration > 0 && m.playbackRate > 0)
+                session.setPositionState({duration:m.duration, playbackRate:m.playbackRate,
+                    position:Math.min(m.duration, Math.max(0, m.currentTime))});
+            else session.setPositionState();
+        }
+
         async play() {
             const media = this.media;
             if (!media) return;
             this.wantsPlay = true;
+            this.activateSession();
             this.ensureGraph();
             const resumed = this.processing ? this.context.resume() : undefined;
             try {
@@ -183,7 +233,8 @@
 
         sample(buffer, waveform) {
             if (!this.processing || this.media.paused) {
-                buffer.set(new Uint8Array(buffer.length).fill(waveform ? 128 : 0));
+                if (this.bins?.length !== buffer.length) this.bins = new Uint8Array(buffer.length);
+                buffer.set(this.bins.fill(waveform ? 128 : 0));
                 return;
             }
             if (this.bins?.length !== buffer.length) this.bins = new Uint8Array(buffer.length);
@@ -208,27 +259,44 @@
         }
 
         destroy() {
+            if (sessionOwner === this) {
+                for (const action of transportActions) setAction(action, null);
+                navigator.mediaSession.metadata = null;
+                navigator.mediaSession.playbackState = "none";
+                navigator.mediaSession.setPositionState?.();
+                sessionOwner = undefined;
+            }
             this.releaseTrack();
             this.context?.close();
-            this.root.remove();
         }
     }
 
     globalThis.UnoPlayMedia = {
-        create(notify) {
-            const player = new BrowserPlayer(notify);
-            players.set(player.root.id, player);
-            return player.root.id;
-        },
+        create(id, notify) { players.set(id, new BrowserPlayer(notify)); },
+        attach(root) { players.get(root.id).attach(root); },
         dispose(id) { players.get(id)?.destroy(); players.delete(id); },
         open(id, url) { players.get(id).open(url); },
         play(id) { return players.get(id).play(); },
         pause(id) { players.get(id).pause(); },
         seek(id, seconds) { players.get(id).seek(seconds); },
+        metadata(id, title, artist, album) {
+            const player = players.get(id);
+            player.tags = {title, artist, album};
+            player.publishMetadata();
+        },
         volume(id, volume) { const p = players.get(id); p.volume = volume; p.updateMix(); },
         balance(id, balance) { const p = players.get(id); p.balance = balance; p.updateMix(); },
         equalize(id, eq) { const p = players.get(id); p.eq = eq; p.updateMix(); },
         sample(id, bytes, waveform) { players.get(id).sample(bytes, waveform); },
+        async toggleFullscreen(id) {
+            const m = players.get(id)?.media;
+            if (!m || !m.videoWidth) throw Error("The current source has no video.");
+            if (document.fullscreenElement === m) await document.exitFullscreen();
+            else if (m.webkitDisplayingFullscreen) m.webkitExitFullscreen();
+            else if (m.requestFullscreen && document.fullscreenEnabled) await m.requestFullscreen();
+            else if (m.webkitEnterFullscreen) m.webkitEnterFullscreen();
+            else throw Error("Fullscreen video is unavailable in this browser.");
+        },
         state(id, key) {
             const p = players.get(id);
             const m = p.media;
@@ -238,6 +306,8 @@
                 case "duration": return Number.isFinite(m.duration) ? m.duration : 0;
                 case "playing": return Number(!m.paused && !m.ended);
                 case "video": return m.videoWidth;
+                case "videoHeight": return m.videoHeight;
+                case "fullscreen": return Number(document.fullscreenElement === m || !!m.webkitDisplayingFullscreen);
                 case "seekable": return m.seekable.length;
                 case "dsp": return Number(!p.direct && !!globalThis.AudioContext);
                 default: return 0;

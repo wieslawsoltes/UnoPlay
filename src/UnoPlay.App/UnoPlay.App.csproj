@@ -10,6 +10,7 @@
     <ApplicationVersion>1</ApplicationVersion>
     <WindowsCompatibilityVersion>10.0.14</WindowsCompatibilityVersion>
     <UnoDisableHotDesign>true</UnoDisableHotDesign>
+    <WasmShellWebAppBasePath>./</WasmShellWebAppBasePath>
     <Description>A skinnable classic media player.</Description>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">

@@ -5,7 +5,7 @@ namespace UnoPlay.Metadata;
 
 /// <summary>Encoded-stream properties. A zero numeric value means the source does not declare that property.</summary>
 public sealed record MediaMetadata(string? Title = null, string? Artist = null, int SampleRate = 0, int Channels = 0,
-    int KilobitsPerSecond = 0, string? Codec = null)
+    int KilobitsPerSecond = 0, string? Codec = null, int VideoWidth = 0, int VideoHeight = 0)
 {
     public string? DisplayTitle => string.IsNullOrWhiteSpace(Title) ? null : string.IsNullOrWhiteSpace(Artist) ? Title : $"{Artist} - {Title}";
 }
@@ -194,6 +194,25 @@ public static class MetadataReader
         return value;
     }
 
+    private static MediaMetadata ReadTrackSize(ReadOnlySpan<byte> box, MediaMetadata value)
+    {
+        // ISO BMFF tkhd uses 16.16 dimensions and a 3x3 matrix. The v1 dates/duration add 12 bytes.
+        if (box.IsEmpty || box[0] > 1) return value;
+        int matrix = box[0] == 1 ? 52 : 40;
+        if (box.Length < matrix + 44) return value;
+        double w = BinaryPrimitives.ReadUInt32BigEndian(box[(matrix + 36)..]) / 65536d;
+        double h = BinaryPrimitives.ReadUInt32BigEndian(box[(matrix + 40)..]) / 65536d;
+        if (w <= 0 || h <= 0) return value; // Audio tracks also carry a tkhd.
+        var m = box[matrix..];
+        double a = BinaryPrimitives.ReadInt32BigEndian(m) / 65536d;
+        double b = BinaryPrimitives.ReadInt32BigEndian(m[4..]) / 65536d;
+        double c = BinaryPrimitives.ReadInt32BigEndian(m[12..]) / 65536d;
+        double d = BinaryPrimitives.ReadInt32BigEndian(m[16..]) / 65536d;
+        double displayW = Math.Abs(a) * w + Math.Abs(c) * h, displayH = Math.Abs(b) * w + Math.Abs(d) * h;
+        if (displayW is < 1 or > 65535 || displayH is < 1 or > 65535) return value;
+        return value with { VideoWidth = (int)Math.Round(displayW), VideoHeight = (int)Math.Round(displayH) };
+    }
+
     private static MediaMetadata ReadBoxes(ReadOnlySpan<byte> data, MediaMetadata value, int depth)
     {
         if (depth > 12) return value;
@@ -213,6 +232,7 @@ public static class MetadataReader
                 case 0x6d6f6f76: case 0x7472616b: case 0x6d646961: case 0x6d696e66: case 0x7374626c: // moov, trak, mdia, minf, stbl
                 case 0x75647461: case 0x696c7374: // udta, ilst
                     value = ReadBoxes(body, value, depth + 1); break;
+                case 0x746b6864: value = ReadTrackSize(body, value); break; // tkhd
                 case 0x6d657461 when body.Length >= 4: // meta, skip FullBox header
                     value = ReadBoxes(body[4..], value, depth + 1); break;
                 case 0x73747364 when body.Length >= 8:

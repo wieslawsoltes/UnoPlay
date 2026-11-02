@@ -12,7 +12,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
-    <EmbeddedResource Include="WasmScripts/unoplay-cursors.js" />
+    <EmbeddedResource Include="WasmScripts/*.js" />
+    <EmbeddedResource Include="WasmCSS/*.css" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../UnoPlay.ClassicSkins/UnoPlay.ClassicSkins.csproj" />

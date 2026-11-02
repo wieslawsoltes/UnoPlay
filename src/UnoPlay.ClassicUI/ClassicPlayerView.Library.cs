@@ -124,17 +124,29 @@ public sealed partial class ClassicPlayerView
     private async Task PickSkin()
     {
         var file = await OpenPicker([".wsz", ".zip"]).PickSingleFileAsync();
-        if (file is null) return;
+        if (file is not null) await LoadSkinFile(file);
+    }
+
+    private async Task LoadSkinFile(StorageFile file)
+    {
         using var stream = await file.OpenStreamForReadAsync();
-        ApplySkin(ClassicSkin.Load(stream));
-        await CacheSkinAsync(file);
+        var info = await file.GetBasicPropertiesAsync();
+        if (info.Size > 32 * 1024 * 1024) throw new InvalidDataException("Skin archive exceeds 32 MiB.");
+        var archive = new byte[checked((int)info.Size)];
+        await stream.ReadExactlyAsync(archive);
+        ApplySkin(ClassicSkin.Load(new MemoryStream(archive, writable: false)));
+        await CacheSkinAsync(file, archive);
         Notify(Path.GetFileNameWithoutExtension(file.Name));
     }
 
     private async Task PickPlaylist()
     {
         var file = await OpenPicker(ListFormats).PickSingleFileAsync();
-        if (file is null) return;
+        if (file is not null) await LoadPlaylistFile(file);
+    }
+
+    private async Task LoadPlaylistFile(StorageFile file)
+    {
         using var stream = await file.OpenStreamForReadAsync();
         if (stream.CanSeek && stream.Length > 4 * 1024 * 1024) throw new InvalidDataException("Playlist is larger than 4 MiB.");
         using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
@@ -143,8 +155,8 @@ public sealed partial class ClassicPlayerView
         var tracks = PlaylistFile.Read(contents, Path.GetExtension(file.Name), baseUri);
         if (tracks.Count == 0) throw new InvalidDataException("No playable entries in this playlist.");
         // Browser file grants identify files by object URL. Resolve playlist-relative names against already granted local files.
-        var grants = Queue.Tracks.Where(t => t.Source is BrowserMediaFile)
-            .GroupBy(t => ((BrowserMediaFile)t.Source!).Name, StringComparer.OrdinalIgnoreCase)
+        var grants = Queue.Tracks.Where(t => t.Source is BrowserMediaFile or StorageFile)
+            .GroupBy(t => t.Source is BrowserMediaFile local ? local.Name : ((StorageFile)t.Source!).Name, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.OrdinalIgnoreCase);
         foreach (var track in tracks)
         {
@@ -184,14 +196,38 @@ public sealed partial class ClassicPlayerView
         finally { _showingDialog = false; }
     }
 
+
     private async Task OpenUrl()
     {
         var value = await Prompt("Open location", "Audio, video, or stream URL", "Play", "https://…");
         if (string.IsNullOrWhiteSpace(value)) return;
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
             throw new ArgumentException("Enter an HTTP or HTTPS media URL.");
-        Queue.Tracks.Add(new Track(uri.AbsoluteUri, Uri.UnescapeDataString(uri.Segments.LastOrDefault()?.Trim('/') ?? "") is { Length: > 0 } name ? name : uri.Host));
-        await PlayIndex(Queue.Tracks.Count - 1);
+        int first = Queue.Tracks.Count;
+        await AddLocation(uri);
+        if (first < Queue.Tracks.Count) await PlayIndex(first);
+    }
+    private async Task AddLocation(Uri uri)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        IReadOnlyList<Track>? tracks = null;
+        try { tracks = await RemotePlaylist.TryReadAsync(TagClient, uri, timeout.Token); }
+        catch (HttpRequestException) when (uri.AbsolutePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
+        {
+            // A native HLS decoder may read a cross-origin manifest even when the browser denies a JS fetch.
+        }
+        if (tracks is not null)
+        {
+            foreach (var track in tracks) Queue.Tracks.Add(track);
+            if (tracks.Count == 0) Notify("NO PLAYABLE ENTRIES IN PLAYLIST");
+            return;
+        }
+        QueueUrl(uri);
+    }
+    private void QueueUrl(Uri uri)
+    {
+        var name = Uri.UnescapeDataString(uri.Segments.LastOrDefault()?.Trim('/') ?? "");
+        Queue.Tracks.Add(new Track(uri.AbsoluteUri, name.Length == 0 ? uri.Host : name));
     }
     private async Task Jump()
     {
@@ -271,6 +307,7 @@ public sealed partial class ClassicPlayerView
             throw new InvalidDataException("Select the referenced local media files before importing this playlist.");
         }
         if (generation != _loadRequest) return;
+        UpdateMediaSession();
         if (_auto) RecallEq();
         EnsureVisible(IndexOf(track));
         await Engine.PlayAsync();
@@ -314,7 +351,7 @@ public sealed partial class ClassicPlayerView
     private TimeSpan SumDuration(IEnumerable<Track> tracks)
         => TimeSpan.FromSeconds(Math.Min(TimeSpan.MaxValue.TotalSeconds - 1, tracks.Sum(t => Math.Max(0, (t.Duration ?? _knownDurations.GetValueOrDefault(t)).TotalSeconds))));
     private void SelectAll() { _selected.UnionWith(Queue.Tracks); SelectionChanged(); }
-    private void ClearList() { _ = Stop(); _loaded = null; Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _tags.Clear(); CancelProbe(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
+    private void ClearList() { _ = Stop(); _loaded = null; UpdateMediaSession(); Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _tags.Clear(); CancelProbe(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
     private void ReleaseUnusedFiles()
     {
         var used = Queue.Tracks.Select(track => track.Source).OfType<BrowserMediaFile>().ToHashSet();

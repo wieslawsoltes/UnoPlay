@@ -12,10 +12,11 @@ public sealed partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        var window = _window = new Window { Title = "UnoPlay" };
         var player = new ClassicPlayerView();
-        var window = new Window { Title = "UnoPlay", Content = player };
-        _window = window;
+        window.Content = player;
 #if __WASM__
+        if (!OperatingSystem.IsBrowser()) throw new PlatformNotSupportedException();
         using var document = System.Runtime.InteropServices.JavaScript.JSHost.GlobalThis.GetPropertyAsJSObject("document");
         var page = new Uri(document!.GetPropertyAsString("baseURI")!);
         var demo = new Uri(page, "media/first-light.mp3");

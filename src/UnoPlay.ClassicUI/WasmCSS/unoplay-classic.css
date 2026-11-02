@@ -1,0 +1,4 @@
+/* Sprite cells, LCD numerals and region masks use the skin's original pixel lattice. */
+.uno-classicsurface img {
+    image-rendering: pixelated;
+}

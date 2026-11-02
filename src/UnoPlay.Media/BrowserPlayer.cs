@@ -18,8 +18,12 @@ public sealed partial class PlayerEngine
 
     public PlayerEngine()
     {
-        _id = BrowserNative.Create(OnEvent);
-        _html = BrowserHtmlElement.OwnHtmlElement(_id);
+        // Create through Uno so the DOM renderer registers the native handle
+        // before ContentPresenter performs its first attach/layout pass.
+        _html = BrowserHtmlElement.CreateHtmlElement("div");
+        _id = _html.ElementId;
+        BrowserNative.Create(_id, OnEvent);
+        _html.ExecuteJavascript("globalThis.UnoPlayMedia.attach(element); return '';");
         View = new ContentControl
         {
             Content = _html,
@@ -43,6 +47,17 @@ public sealed partial class PlayerEngine
             case "state": RaiseStateChanged(); break;
             case "ended": RaiseEnded(); break;
             case "error": RaiseFailed(message); break;
+            case "command":
+                _ = DispatchTransportAsync(message switch
+                {
+                    "play" => MediaTransportCommand.Play,
+                    "pause" => MediaTransportCommand.Pause,
+                    "stop" => MediaTransportCommand.Stop,
+                    "previoustrack" => MediaTransportCommand.Previous,
+                    "nexttrack" => MediaTransportCommand.Next,
+                    _ => throw new ArgumentOutOfRangeException(nameof(message))
+                });
+                break;
         }
     }
 
@@ -121,7 +136,7 @@ public sealed partial class PlayerEngine
 internal static partial class BrowserNative
 {
     private const string Api = "globalThis.UnoPlayMedia.";
-    [JSImport(Api + "create")] internal static partial string Create([JSMarshalAs<JSType.Function<JSType.String, JSType.String>>] Action<string, string> notify);
+    [JSImport(Api + "create")] internal static partial void Create(string id, [JSMarshalAs<JSType.Function<JSType.String, JSType.String>>] Action<string, string> notify);
     [JSImport(Api + "dispose")] internal static partial void Dispose(string id);
     [JSImport(Api + "open")] internal static partial void Open(string id, string url);
     [JSImport(Api + "play")] internal static partial Task Play(string id);

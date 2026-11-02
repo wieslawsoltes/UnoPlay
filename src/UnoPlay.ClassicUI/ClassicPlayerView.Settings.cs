@@ -57,6 +57,13 @@ public sealed partial class ClassicPlayerView
                 ApplyEq();
                 RefreshLayout();
             }
+#if UNOPLAY_BROWSER
+            long generation = _skinGeneration;
+            using var dataHandle = await BrowserSkinStore.Load();
+            var stored = BrowserSkinStore.Bytes(dataHandle);
+            if (stored.Length != 0 && !_disposed && generation == _skinGeneration)
+                ApplySkin(ClassicSkins.ClassicSkin.Load(new MemoryStream(stored, writable: false)));
+#else
             if (settings.TryGetValue(SkinKey, out var name) && name is string saved && Guid.TryParseExact(saved, "N", out _))
             {
                 long generation = _skinGeneration;
@@ -64,6 +71,7 @@ public sealed partial class ClassicPlayerView
                 using var stream = await file.OpenStreamForReadAsync();
                 if (!_disposed && generation == _skinGeneration) ApplySkin(ClassicSkins.ClassicSkin.Load(stream));
             }
+#endif
         }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Could not restore UnoPlay preferences: {ex.Message}"); }
     }
@@ -88,10 +96,14 @@ public sealed partial class ClassicPlayerView
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Could not save UnoPlay preferences: {ex.Message}"); }
     }
 
-    private async Task CacheSkinAsync(StorageFile? source)
+    private async Task CacheSkinAsync(StorageFile? source, byte[]? archive = null)
     {
         long generation = ++_skinGeneration;
         if (!_preferencesEnabled) return;
+#if UNOPLAY_BROWSER
+        if (archive is null) await BrowserSkinStore.Clear();
+        else await BrowserSkinStore.Save(archive);
+#else
         var settings = ApplicationData.Current.LocalSettings.Values;
         var folder = ApplicationData.Current.LocalFolder;
         settings.TryGetValue(SkinKey, out var previous);
@@ -105,5 +117,6 @@ public sealed partial class ClassicPlayerView
         else settings.Remove(SkinKey);
         if (previous is string old && Guid.TryParseExact(old, "N", out _)
             && await folder.TryGetItemAsync(old + ".wsz") is StorageFile oldFile) await oldFile.DeleteAsync();
+#endif
     }
 }

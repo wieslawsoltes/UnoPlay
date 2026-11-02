@@ -43,7 +43,7 @@ public sealed partial class ClassicPlayerView
             else return;
             if (cancel.IsCancellationRequested || _disposed) return;
             _tags[track] = tags;
-            if (ReferenceEquals(_loaded, track)) { Draw(PanelId.Main); Draw(PanelId.Playlist); }
+            if (ReferenceEquals(_loaded, track)) { UpdateMediaSession(); Draw(PanelId.Main); Draw(PanelId.Playlist); }
         }
         catch (Exception error) when (error is OperationCanceledException or HttpRequestException or IOException or NotSupportedException or UnauthorizedAccessException)
         { /* Playback proceeds for streams which do not grant metadata or byte-range access. */ }

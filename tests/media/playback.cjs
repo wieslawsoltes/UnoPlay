@@ -51,8 +51,19 @@ function serve() {
         await page.goto(`http://127.0.0.1:${main.address().port}/`);
         await page.evaluate(() => {
             window.signals = [];
-            window.id = UnoPlayMedia.create((...arg) => signals.push(arg));
-            const container = document.getElementById(id);
+            window.systemActions = new Map();
+            const register = MediaSession.prototype.setActionHandler;
+            MediaSession.prototype.setActionHandler = function(action, handler) {
+                register.call(this, action, handler);
+                if (handler) systemActions.set(action, handler);
+                else systemActions.delete(action);
+            };
+            window.id = "media-test";
+            const container = document.createElement("div");
+            container.id = id;
+            document.body.append(container);
+            UnoPlayMedia.create(id,(...arg) => signals.push(arg));
+            UnoPlayMedia.attach(container);
             container.style.width = "275px";
             container.style.height = "200px";
             window.start = async url => { UnoPlayMedia.open(id,url); await UnoPlayMedia.play(id); };
@@ -62,8 +73,15 @@ function serve() {
                 return Math.max(...samples);
             };
         });
-        await page.evaluate(() => start("tone.mp3"));
+        await page.evaluate(async () => {
+            UnoPlayMedia.metadata(id, "Test tone", "UnoPlay", "Transport checks");
+            await start("tone.mp3");
+        });
         await page.waitForFunction(() => UnoPlayMedia.state(id,"playing") && UnoPlayMedia.state(id,"position") > .3 && peak() > 120);
+        assert.equal(await page.evaluate(() => navigator.mediaSession.metadata.title), "Test tone");
+        assert.equal(await page.evaluate(() => navigator.mediaSession.playbackState), "playing");
+        await page.evaluate(() => systemActions.get("nexttrack")({action:"nexttrack"}));
+        assert.ok(await page.evaluate(() => signals.some(([kind,command]) => kind === "command" && command === "nexttrack")));
         const initialPeak = await page.evaluate(() => peak());
         await page.evaluate(() => UnoPlayMedia.equalize(id,[0,0,0,0,0,-12,0,0,0,0,0]));
         await page.waitForFunction(peakBefore => peak() < peakBefore - 15, initialPeak);
@@ -71,9 +89,13 @@ function serve() {
         await page.waitForFunction(() => !UnoPlayMedia.state(id,"playing") && Math.abs(UnoPlayMedia.state(id,"position")-1.5) < .05);
         console.log("MP3 decode, FFT, ten-band EQ attenuation, pause and seek passed");
         await page.evaluate(() => start("clip.mp4"));
-        await page.waitForFunction(() => UnoPlayMedia.state(id,"video") === 96 && UnoPlayMedia.state(id,"duration") > 1);
+        await page.waitForFunction(() => UnoPlayMedia.state(id,"video") === 96 && UnoPlayMedia.state(id,"videoHeight") === 64 && UnoPlayMedia.state(id,"duration") > 1);
+        await page.evaluate(() => UnoPlayMedia.toggleFullscreen(id));
+        await page.waitForFunction(() => UnoPlayMedia.state(id,"fullscreen") === 1 && document.fullscreenElement?.controls);
+        await page.evaluate(() => UnoPlayMedia.toggleFullscreen(id));
+        await page.waitForFunction(() => !document.fullscreenElement && !document.querySelector("video").controls);
         await page.waitForFunction(() => signals.some(([kind])=>kind==="ended"));
-        console.log("MP4 video decoded at 96 x 64 and emitted ended");
+        console.log("MP4 video decoded at 96 x 64, entered/exited native fullscreen and emitted ended");
         await page.evaluate(async () => {
             const blob = await (await fetch("tone.mp3")).blob();
             window.objectUrl = URL.createObjectURL(blob);
@@ -81,14 +103,28 @@ function serve() {
         });
         await page.waitForFunction(() => UnoPlayMedia.state(id,"position") > .1);
         await page.evaluate(() => UnoPlayMedia.revoke(objectUrl));
+        // Force the MSE path even on browsers that also ship a native HLS codec.
+        await page.evaluate(() => {
+            const native = HTMLMediaElement.prototype.canPlayType;
+            HTMLMediaElement.prototype.canPlayType = function(type) {
+                return /mpegurl/i.test(type) ? "" : native.call(this, type);
+            };
+        });
+        let fetchedDecoder = false;
+        page.on("response", response => {
+            if (response.url().endsWith("/media/hls-1.7.4.min.mjs") && response.ok()) fetchedDecoder = true;
+        });
         await page.evaluate(() => start("index.m3u8"));
         await page.waitForFunction(() => UnoPlayMedia.state(id,"position") > .2);
-        console.log("Blob URL and HLS playlist with real AAC segments passed");
+        assert.equal(fetchedDecoder, true, "HLS decoder must load on demand");
+        console.log("Blob URL and MSE HLS playlist with real AAC segments passed");
         await page.evaluate(port=>start(`http://127.0.0.1:${port}/tone.mp3`),radio.address().port);
         await page.waitForFunction(() => UnoPlayMedia.state(id,"playing") && UnoPlayMedia.state(id,"position") > .1 && !UnoPlayMedia.state(id,"dsp"));
         assert.deepEqual(await page.evaluate(()=>signals.filter(([kind])=>kind==="error")),[]);
         await page.evaluate(()=>{ UnoPlayMedia.dispose(id); });
         assert.equal(await page.locator("video").count(), 0);
+        assert.equal(await page.evaluate(()=>systemActions.size), 0);
+        assert.equal(await page.evaluate(()=>navigator.mediaSession.metadata), null);
         console.log("Cross-origin radio fallback, error isolation and disposal passed");
     } finally {
         await browser?.close();

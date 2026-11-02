@@ -1,4 +1,5 @@
 #if !UNOPLAY_BROWSER
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -39,6 +40,12 @@ public sealed partial class PlayerEngine
     private void EnsureMediaElement()
     {
         if (_player != null) return;
+        if (OperatingSystem.IsLinux())
+        {
+            if (!NativeLibrary.TryLoad("libvlc.so", out var handle))
+                throw new InvalidOperationException("Install libvlc-dev and VLC playback plugins, then restart UnoPlay.");
+            NativeLibrary.Free(handle);
+        }
         var element = new MediaPlayerElement { AutoPlay = false, AreTransportControlsEnabled = false, Stretch = Stretch.Uniform };
         var player = new MediaPlayer { AutoPlay = false, Volume = _volume };
         element.SetMediaPlayer(player);

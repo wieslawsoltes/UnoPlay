@@ -28,16 +28,21 @@ jobs:
           dotnet run -c Release --project tests/ClassicSkins.Tests
           dotnet run -c Release --project tests/Metadata.Tests -- src/UnoPlay.App/Assets/Media/first-light.mp3
       - run: dotnet publish src/UnoPlay.App -c Release -f net10.0-browserwasm -p:UnoPlayTarget=net10.0-browserwasm -o "${{ runner.temp }}/browser"
-      - name: Locate static site
-        id: site
+      - name: Test published browser application
         shell: bash
         run: |
-          index=$(find "${{ runner.temp }}/browser" -type f -name index.html -print -quit)
-          test -n "$index"
-          echo "path=$(dirname "$index")" >> "$GITHUB_OUTPUT"
+          site="${{ runner.temp }}/browser/wwwroot"
+          test -f "$site/index.html" && test -f "$site/media/first-light.mp3"
+          npm ci --prefix tests/browser
+          (cd tests/browser && npx playwright install --with-deps chromium)
+          node tests/browser/app.cjs "$site"
+      - name: Verify media decoding and DSP
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y ffmpeg
+          NODE_PATH="$PWD/tests/browser/node_modules" node tests/media/playback.cjs
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ${{ steps.site.outputs.path }}
+          path: ${{ runner.temp }}/browser/wwwroot
   deploy:
     needs: browser
     runs-on: ubuntu-latest

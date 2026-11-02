@@ -42,7 +42,7 @@ public sealed partial class ClassicPlayerView
         var menu = new ClassicSurface(Panel(PanelId.Playlist).Atlas, "Playlist " + group + " menu");
         int h = 18 * commands.Length;
         menu.DefineSize(25, h);
-        menu.RenderTransform = new ScaleTransform { ScaleX = _scale, ScaleY = _scale };
+        menu.SetZoom(_scale);
         var pt = anchor.TransformToVisual(_desk).TransformPoint(new Point(0,0));
         Canvas.SetLeft(menu, Math.Max(0, pt.X - 3 * _scale));
         Canvas.SetTop(menu, Math.Max(0, pt.Y - (h - 18) * _scale));
@@ -71,7 +71,7 @@ public sealed partial class ClassicPlayerView
             item.PointerEntered += (_, _) => DrawMenu(index);
             item.PointerExited += (_, _) => DrawMenu();
             item.Click += (_, _) => { DismissClassicMenu(); commands[index].Run(); };
-            ClassicSurface.Place(item, 3, i * 18, 22, 18);
+            menu.PlaceTarget(item, 3, i * 18, 22, 18);
             menu.Targets.Children.Add(item);
         }
         DrawMenu();

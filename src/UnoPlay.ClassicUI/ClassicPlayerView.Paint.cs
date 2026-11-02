@@ -7,7 +7,7 @@ public sealed partial class ClassicPlayerView
 {
     private void DrawMain(ClassicSurface p)
     {
-        bool shade = _shaded[0], active = _active == PanelId.Main;
+        bool shade = _shaded[0], active = !_videoFocus && _active == PanelId.Main;
         if (!shade) p.Sprite("main", 0, 0, 275, 116, 0, 0);
         p.Sprite("titlebar", 27, shade ? (active ? 29 : 42) : (active ? 0 : 15), 275, 14, 0, 0);
         p.Sprite("titlebar", 0, Down("Options") ? 9 : 0, 9, 9, 6, 3);
@@ -46,8 +46,8 @@ public sealed partial class ClassicPlayerView
         p.Sprite("monoster", 0, tags?.Channels >= 2 ? 0 : 12, 29, 12, 239, 41);
         var volume = Math.Clamp(Engine.Volume, 0, 1);
         var balance = Math.Clamp(Engine.Balance, -1, 1);
-        p.Sprite("volume", 0, 15 * Math.Clamp((int)Math.Round(28 * volume) - 1, 0, 27), 68, 13, 107, 57);
-        p.Sprite("volume", Down("Volume") ? 0 : 15, 422, 14, 11, 107 + (int)Math.Round(volume * 51), 58);
+        p.Sprite("volume", 0, 15 * (int)(27 * volume), 68, 13, 107, 57);
+        p.Sprite("volume", Down("Volume") ? 0 : 15, 422, 14, 11, 107 + (int)(volume * 51), 58);
         p.Sprite("balance", 9, 15 * (int)(27 * Math.Abs(balance)), 38, 13, 177, 57);
         p.Sprite("balance", Down("Balance") ? 0 : 15, 422, 14, 11, 177 + (int)Math.Round((balance + 1) * 12), 58);
         p.Sprite("shufrep", Down("Equalizer") ? 46 : 0, _visible[1] ? 73 : 61, 23, 12, 219, 58);
@@ -110,7 +110,7 @@ public sealed partial class ClassicPlayerView
 
     private void DrawEq(ClassicSurface p)
     {
-        bool active = _active == PanelId.Equalizer;
+        bool active = !_videoFocus && _active == PanelId.Equalizer;
         if (_shaded[1])
         {
             p.Sprite("eq_ex", 0, active ? 0 : 15, 275, 14, 0, 0);
@@ -164,7 +164,7 @@ public sealed partial class ClassicPlayerView
     private void DrawPlaylist(ClassicSurface p)
     {
         int w = _playlistWidth, h = _playlistHeight;
-        bool active = _active == PanelId.Playlist;
+        bool active = !_videoFocus && _active == PanelId.Playlist;
         if (_shaded[2])
         {
             for (int x = 0; x < w; x += 25) p.Sprite("pledit", 72, 57, Math.Min(25, w - x), 14, x, 0);

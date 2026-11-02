@@ -74,7 +74,7 @@ public sealed partial class ClassicPlayerView
             }
             Button(id, "Enable equalizer", 14, 18, 26, 12, _ =>
             {
-                if (!Engine.SupportsDsp) { Notify("EQUALIZER UNAVAILABLE FOR THIS OUTPUT"); return; }
+                if (_loaded is not null && !Engine.SupportsDsp) { Notify("EQUALIZER UNAVAILABLE FOR THIS OUTPUT"); return; }
                 _eq = !_eq; ApplyEq();
             });
             Button(id, "Auto presets", 40, 18, 32, 12, _ => { _auto = !_auto; if (_auto) RecallEq(); Draw(id); });
@@ -99,7 +99,8 @@ public sealed partial class ClassicPlayerView
         {
             int offset = row;
             var hit = Button(id, "Queue row " + (row + 1), 12, 22 + row * 13, w - 32, 13, _ => SelectRow(_top + offset));
-            hit.DoubleTapped += (_, e) => { e.Handled = true; _ = Guard(() => PlayIndex(_top + offset)); };
+            hit.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler((_, e) => { e.Handled = true; _ = Guard(() => PlayIndex(_top + offset)); }), true);
+            hit.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; _ = Guard(() => PlayIndex(_top + offset)); } };
             hit.PointerWheelChanged += PlaylistWheel;
         }
         Slider(id, "Scroll playlist", w - 17, 20, 12, h - 58, true, 18, n => { _top = (int)Math.Round(n * Math.Max(0, Queue.Tracks.Count - Rows)); Draw(id); });
@@ -134,7 +135,7 @@ public sealed partial class ClassicPlayerView
         b.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => { _pressed = null; Draw(id); }), true);
         b.PointerCaptureLost += (_, _) => { if (_pressed == name) { _pressed = null; Draw(id); } };
         b.Click += (_, _) => { if (!outside) { Activate(id); action(b); } outside = false; };
-        ClassicSurface.Place(b, x, y, w, h);
+        Panel(id).PlaceTarget(b, x, y, w, h);
         Panel(id).Targets.Children.Add(b);
         return b;
     }
@@ -143,7 +144,7 @@ public sealed partial class ClassicPlayerView
     {
         var b = new Border { Background = ClassicSurface.Brush(0x00000000) };
         AutomationProperties.SetName(b, name);
-        ClassicSurface.Place(b, x, y, w, h);
+        Panel(id).PlaceTarget(b, x, y, w, h);
         Panel(id).Targets.Children.Add(b);
         return b;
     }
@@ -156,7 +157,7 @@ public sealed partial class ClassicPlayerView
         void Set(PointerRoutedEventArgs e)
         {
             var pt = e.GetCurrentPoint(hit).Position;
-            double n = ((vertical ? pt.Y : pt.X) - thumb / 2d) / ((vertical ? h : w) - thumb);
+            double n = ((vertical ? pt.Y : pt.X) / Panel(id).Zoom - thumb / 2d) / ((vertical ? h : w) - thumb);
             change(Math.Clamp(n, 0, 1));
         }
         hit.PointerPressed += (_, e) =>
@@ -254,7 +255,7 @@ public sealed partial class ClassicPlayerView
     private void SetVolume(double n) { Engine.Volume = Math.Clamp(n, 0, 1); Notify($"VOLUME {(int)(Engine.Volume * 100)}%"); Draw(PanelId.Equalizer); }
     private void SetBalance(double n)
     {
-        if (!Engine.SupportsDsp) { Notify("BALANCE UNAVAILABLE FOR THIS OUTPUT"); return; }
+        if (_loaded is not null && !Engine.SupportsDsp) { Notify("BALANCE UNAVAILABLE FOR THIS OUTPUT"); return; }
         Engine.Balance = Math.Abs(.5 - n) < .04 ? 0 : n * 2 - 1;
         Notify($"BALANCE {(Engine.Balance == 0 ? "CENTER" : $"{Math.Abs((int)(Engine.Balance * 100))}% {(Engine.Balance < 0 ? "LEFT" : "RIGHT")}")}");
         Draw(PanelId.Equalizer);
@@ -268,6 +269,8 @@ public sealed partial class ClassicPlayerView
     private static bool Modifier(VirtualKey key) => (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
     private void HandleKey(object sender, KeyRoutedEventArgs e)
     {
+        if (Engine.HasVideo && (e.Key == VirtualKey.F11 || (e.Key == VirtualKey.Escape && Engine.IsVideoFullscreen)))
+        { e.Handled = true; _ = Guard(Engine.ToggleVideoFullscreenAsync); return; }
         if (_popupLayer is not null && e.Key == VirtualKey.Escape) { DismissClassicMenu(); e.Handled = true; return; }
         bool ctrl = Modifier(VirtualKey.Control);
         e.Handled = true;

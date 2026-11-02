@@ -1,0 +1,6 @@
+{
+  "name": "unoplay-browser-tests",
+  "private": true,
+  "scripts": { "test": "node app.cjs" },
+  "devDependencies": { "playwright": "1.62.1" }
+}

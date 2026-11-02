@@ -19,15 +19,23 @@ internal sealed class SpriteAtlas(ClassicSkin skin)
     {
         var key = (sheet, x, y, w, h);
         if (_sprites.TryGetValue(key, out var cached)) return cached;
-        var source = skin.GetBitmap(sheet, x, y, w, h);
-        if (source is null || x < 0 || y < 0 || x + w > source.Width || y + h > source.Height)
+        // Many skins deliberately end VOLUME/BALANCE before the optional thumb rows.
+        // Those rows are transparent when absent, allowing the painted track to remain visible.
+        bool optionalThumb = y == 422 && sheet is "balance" or "volume";
+        var source = optionalThumb ? skin.GetBitmap(sheet) : skin.GetBitmap(sheet, x, y, w, h);
+        if (source is null || x < 0 || y < 0 || x >= source.Width || y >= source.Height)
             return _sprites[key] = null;
         var result = new WriteableBitmap(w, h);
         using (var dst = result.PixelBuffer.AsStream())
         {
             var pixels = source.Bgra32.Span;
-            for (int row = 0; row < h; row++)
-                dst.Write(pixels.Slice(((y + row) * source.Width + x) * 4, w * 4));
+            int copyWidth = Math.Min(w, source.Width - x);
+            int rows = Math.Min(h, source.Height - y);
+            for (int row = 0; row < rows; row++)
+            {
+                dst.Write(pixels.Slice(((y + row) * source.Width + x) * 4, copyWidth * 4));
+                if (copyWidth < w) dst.Seek((w - copyWidth) * 4, SeekOrigin.Current);
+            }
         }
         result.Invalidate();
         return _sprites[key] = result;
@@ -36,7 +44,7 @@ internal sealed class SpriteAtlas(ClassicSkin skin)
 
 internal sealed class ClassicSurface : Grid
 {
-    internal readonly Canvas Art = new() { IsHitTestVisible = false };
+    internal readonly Canvas Art = new() { IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
     internal readonly Canvas Targets = new() { Background = Brush(0x00000000) };
     private int _next;
     private readonly Dictionary<(WriteableBitmap, int, int), WriteableBitmap> _masked = new();
@@ -44,6 +52,8 @@ internal sealed class ClassicSurface : Grid
     private IReadOnlyList<SkinPoint[]>? _polygons;
     private RegionMask? _region;
     public SpriteAtlas Atlas { get; set; }
+    public double Zoom { get; private set; } = 1;
+    private int _logicalWidth, _logicalHeight;
 
     public ClassicSurface(SpriteAtlas atlas, string name)
     {
@@ -58,15 +68,15 @@ internal sealed class ClassicSurface : Grid
     public void SetRegion(IReadOnlyList<SkinPoint[]> polygons)
     {
         if (ReferenceEquals(_polygons, polygons) &&
-            (_region is null || (_region.Width == (int)Width && _region.Height == (int)Height))) return;
+            (_region is null || (_region.Width == _logicalWidth && _region.Height == _logicalHeight))) return;
         _polygons = polygons;
-        _region = polygons.Count == 0 ? null : new RegionMask(polygons, (int)Width, (int)Height);
+        _region = polygons.Count == 0 ? null : new RegionMask(polygons, _logicalWidth, _logicalHeight);
         _masked.Clear();
         _dynamic.Clear();
     }
 
     public bool AcceptsPoint(Point point) =>
-        _region?.Contains((int)Math.Floor(point.X), (int)Math.Floor(point.Y)) ?? true;
+        _region?.Contains((int)Math.Floor(point.X / Zoom), (int)Math.Floor(point.Y / Zoom)) ?? true;
 
     public void Begin() => _next = 0;
     public void End()
@@ -176,6 +186,13 @@ internal sealed class ClassicSurface : Grid
     private static (int X, int Y) Glyph(char ch)
     {
         ch = char.ToUpperInvariant(ch);
+        ch = ch switch
+        {
+            'À' or 'Á' or 'Â' or 'Æ' => 'A', 'Ç' => 'C', 'È' or 'É' or 'Ê' or 'Ë' => 'E',
+            'Ì' or 'Í' or 'Î' or 'Ï' => 'I', 'Ñ' => 'N', 'Ò' or 'Ó' or 'Ô' => 'O',
+            'Ù' or 'Ú' or 'Û' or 'Ü' => 'U', 'Ÿ' => 'Y', 'Ƒ' => 'F', '°' => '0',
+            '~' => '^', (char)96 => (char)39, (char)1 => '…', _ => ch
+        };
         if (ch is >= 'A' and <= 'Z') return ((ch - 'A') * 5, 0);
         if (ch == '"') return (130, 0);
         if (ch == '@') return (135, 0);
@@ -184,7 +201,7 @@ internal sealed class ClassicSurface : Grid
         int i = row.IndexOf(ch switch { '<' or '{' => '[', '>' or '}' => ']', _ => ch });
         if (i >= 0) return (i * 5, 6);
         i = "ÅÖÄ?*".IndexOf(ch);
-        return ((i >= 0 ? i : 3) * 5, 12);
+        return i >= 0 ? (i * 5, 12) : (150, 0);
     }
 
     public void Text(string text, int x, int y, int cells, int start = 0)
@@ -196,10 +213,36 @@ internal sealed class ClassicSurface : Grid
         }
     }
 
+    public void PlaceTarget(FrameworkElement target, int x, int y, int w, int h)
+    {
+        var rect = new Rect(x, y, w, h);
+        target.Tag = rect;
+        PositionTarget(target, rect);
+    }
+
+    private void PositionTarget(FrameworkElement target, Rect rect)
+    {
+        int x = (int)Math.Round(rect.X * Zoom);
+        int y = (int)Math.Round(rect.Y * Zoom);
+        Place(target, x, y, (int)Math.Round(rect.Right * Zoom)-x, (int)Math.Round(rect.Bottom * Zoom)-y);
+    }
+
+    public void SetZoom(double scale)
+    {
+        if (Zoom == scale) return;
+        Zoom = scale;
+        // Keep input controls in viewport DIPs. Bitmap zoom must never change the input
+        // coordinate system that ButtonBase and the browser use for pointer capture.
+        Art.RenderTransform = scale == 1 ? null : new ScaleTransform { ScaleX = scale, ScaleY = scale };
+        DefineSize(_logicalWidth, _logicalHeight);
+        foreach (var child in Targets.Children.OfType<FrameworkElement>())
+            if (child.Tag is Rect rect) PositionTarget(child, rect);
+    }
     public void DefineSize(int w, int h)
     {
-        Width = w;
-        Height = h;
-        Clip = new RectangleGeometry { Rect = new Rect(0, 0, w, h) };
+        _logicalWidth = w; _logicalHeight = h;
+        Art.Width = w; Art.Height = h;
+        Width = w * Zoom; Height = h * Zoom;
+        Clip = new RectangleGeometry { Rect = new Rect(0, 0, Width, Height) };
     }
 }

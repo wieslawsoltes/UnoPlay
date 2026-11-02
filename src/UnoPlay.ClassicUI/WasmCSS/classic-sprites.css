@@ -1,0 +1,5 @@
+/* Classic sheets are authored at one device pixel per texel. Preserve hard edges
+   when Uno scales the window, including the Winamp double-size setting. */
+.uno-classicsurface .uno-htmlimage {
+    image-rendering: pixelated;
+}

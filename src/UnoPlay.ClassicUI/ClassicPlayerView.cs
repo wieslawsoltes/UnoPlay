@@ -59,9 +59,10 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         _panels = [new(atlas, "Main player"), new(atlas, "Graphic equalizer"), new(atlas, "Playlist editor")];
         InitializeCursors();
         _video.Child = engine.View;
-        _desk.Children.Add(_video);
         foreach (var panel in _panels) _desk.Children.Add(panel);
+        SetupVideo(atlas);
         _desk.RightTapped += (_, e) => { ShowMenu("options", _desk, e.GetPosition(_desk)); e.Handled = true; };
+        EnableDrop();
         KeyDown += HandleKey;
         SizeChanged += (_, _) => ArrangeWorkspace(reset: !_windowMoved);
         Loaded += (_, _) =>
@@ -85,6 +86,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         Queue.Tracks.CollectionChanged += TracksChanged;
         Engine.StateChanged += EngineStateChanged;
         Engine.Ended += EngineEnded;
+        Engine.TransportRequested += EngineTransportRequested;
         Engine.Failed += EngineFailed;
         RefreshLayout();
     }
@@ -96,6 +98,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         ResetCursors();
         var atlas = new SpriteAtlas(skin);
         foreach (var panel in _panels) panel.Atlas = atlas;
+        if (_videoFrame is not null) _videoFrame.Atlas = atlas;
         RefreshLayout();
     }
 
@@ -113,6 +116,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         Queue.Tracks.CollectionChanged -= TracksChanged;
         Engine.StateChanged -= EngineStateChanged;
         Engine.Ended -= EngineEnded;
+        Engine.TransportRequested -= EngineTransportRequested;
         Engine.Failed -= EngineFailed;
         if (_ownsEngine) Engine.Dispose();
         foreach (var file in _browserFiles) file.Dispose();
@@ -167,24 +171,10 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         for (int i = 0; i < 3; i++)
         {
             var panel = _panels[i];
-            if (panel.RenderTransform is not ScaleTransform t || t.ScaleX != _scale)
-                panel.RenderTransform = new ScaleTransform { ScaleX = _scale, ScaleY = _scale };
+            panel.SetZoom(_scale);
             SetPosition((PanelId)i, _points[i]);
         }
         ArrangeVideo();
-    }
-
-    private void ArrangeVideo()
-    {
-        bool show = Engine.HasVideo && _videoEnabled;
-        double w = show ? Math.Min(420, Math.Max(160, ActualWidth / 2)) : 1;
-        _video.Width = w;
-        _video.Height = show ? w * 9 / 16 : 1;
-        _video.Opacity = show ? 1 : 0;
-        _video.IsHitTestVisible = show;
-        Canvas.SetLeft(_video, show ? Math.Max(0, ActualWidth - w - 5) : 0);
-        Canvas.SetTop(_video, show ? Math.Max(0, ActualHeight - _video.Height - 5) : 0);
-        Canvas.SetZIndex(_video, show ? 4 : 0);
     }
 
     private void SetPosition(PanelId id, Point pt)
@@ -198,6 +188,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
 
     private void Activate(PanelId id)
     {
+        if (_videoFocus) { SetVideoFocus(false); ArrangeVideo(); }
         if (_active == id) return;
         _active = id;
         foreach (var panel in _panels) Canvas.SetZIndex(panel, panel == Panel(id) ? 3 : 1);
@@ -246,12 +237,25 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     });
     private void EngineFailed(object? sender, string error) => OnUi(() => { _stopped = true; Notify(error); });
     private void EngineEnded(object? sender, EventArgs e) => OnUi(() => _ = Guard(() => Advance(false)));
+    private bool _drawQueuePending;
     private void TracksChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        _totalDuration = SumDuration(Queue.Tracks);
         _top = Math.Clamp(_top, 0, Math.Max(0, Queue.Tracks.Count - Rows));
-        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Add)
-            _selected.RemoveWhere(t => !Queue.Tracks.Any(q => ReferenceEquals(t, q)));
-        Draw(PanelId.Playlist);
+        // Apply a multi-file paste, reorder or playlist import as one visual update.
+        if (_drawQueuePending) return;
+        _drawQueuePending = true;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _drawQueuePending = false;
+            if (_disposed) return;
+            _totalDuration = SumDuration(Queue.Tracks);
+            if (_selected.Count > 0)
+            {
+                var present = Queue.Tracks.ToHashSet(ReferenceEqualityComparer.Instance);
+                _selected.RemoveWhere(t => !present.Contains(t));
+                _selectedDuration = SumDuration(_selected);
+            }
+            Draw(PanelId.Playlist);
+        });
     }
 }

@@ -28,6 +28,18 @@ BinaryPrimitives.WriteInt32BigEndian(avg.AsSpan(8),96000);
 byte[] ftyp = Box("ftyp","M4A "u8.ToArray());
 byte[] moov = Box("moov", Box("trak", Box("mdia", Box("minf",Box("stbl",Box("stsd", [.. new byte[8], .. Box("mp4a",[..sample,..Box("btrt",avg)])]))))));
 Check(MetadataReader.Read([..ftyp,..moov]) is { Channels: 2, SampleRate: 48000, KilobitsPerSecond: 96 }, "MPEG-4 audio sample entry");
+foreach (byte version in new byte[] { 0, 1 })
+{
+    int matrix = version == 0 ? 40 : 52;
+    var track = new byte[matrix + 44];
+    track[0] = version;
+    BinaryPrimitives.WriteInt32BigEndian(track.AsSpan(matrix + 4), 1 << 16);
+    BinaryPrimitives.WriteInt32BigEndian(track.AsSpan(matrix + 12), -(1 << 16));
+    BinaryPrimitives.WriteInt32BigEndian(track.AsSpan(matrix + 36), 1920 << 16);
+    BinaryPrimitives.WriteInt32BigEndian(track.AsSpan(matrix + 40), 1080 << 16);
+    Check(MetadataReader.Read([..ftyp, ..Box("moov", Box("trak", Box("tkhd", track)))]) is {VideoWidth: 1080, VideoHeight: 1920},
+        "Portrait rotation and track display size");
+}
 Check(MetadataReader.Read(ftyp,[..new byte[22],..moov]).SampleRate == 48000, "moov after media data");
 Check(MetadataReader.Read([0xff,0xfb,0x90,0]).Codec is null, "No guessed header without a matching frame");
 for (int i=0; i<id3.Length; i++) MetadataReader.Read(id3.AsSpan(0,i));
