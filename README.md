@@ -1,6 +1,6 @@
 # UnoPlay
 
-[Play UnoPlay in the browser](https://wieslawsoltes.github.io/UnoPlay/) · [Download a desktop build](https://github.com/wieslawsoltes/UnoPlay/actions/workflows/desktop.yml)
+[Play UnoPlay in the browser](https://wieslawsoltes.github.io/UnoPlay/) · [Download a desktop build](https://github.com/wieslawsoltes/UnoPlay/releases/latest)
 
 UnoPlay is a C# media player built with Uno Platform for WebAssembly and Skia Desktop. Press **Play** to hear *First Light*, a short original stereo track included with the app. Use the top-left menu to open a media URL, playlist, or classic Winamp skin. You can also drop files onto the workspace.
 
@@ -55,7 +55,11 @@ python3 -m http.server 8000 --directory artifacts/publish/wwwroot
 
 Linux desktop uses X11 or XWayland. For native video and network playback on Ubuntu, install `libvlc-dev vlc-plugin-base vlc-plugin-video-output`. The native loader uses the unversioned `libvlc.so` provided by the development package. Linux self-contained builds include the .NET runtime and the local audio decoder. The optional Linux MiniBrowser uses GTK 3 and WebKitGTK 4.1. Windows and macOS use the corresponding Uno desktop host.
 
-The desktop workflow produces separate self-contained Windows x64, Linux x64, and macOS Apple Silicon packages. Download the artifact for your OS from a successful workflow run. Extract the archive, then start `UnoPlay.App` or `UnoPlay.App.exe`.
+Download a self-contained desktop package from the [latest release](https://github.com/wieslawsoltes/UnoPlay/releases/latest). Extract the archive, then launch `UnoPlay/UnoPlay.App.exe` on Windows or `UnoPlay/UnoPlay.App` on Linux and macOS. Each release includes a `SHA256SUMS` file for the three downloads.
+
+### Publishing a release
+
+Set `VERSION` to the new stable version (for example, `1.1.0`) and add its notes in `releases/v1.1.0.md` in the same push to `main`. The desktop workflow builds the three packages once, checks their native architecture and runtime payload, and publishes them together under the corresponding Git tag. Regular pushes continue to produce CI artifacts. To retry a release, rerun its workflow. You can also push a matching `vX.Y.Z` tag or select **Publish release** when manually running the workflow on `main`.
 
 ## Reusable libraries
 

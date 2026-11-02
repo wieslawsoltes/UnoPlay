@@ -1,18 +1,69 @@
-name: Desktop packages
+name: Desktop packages and releases
+
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Resolve release version
+        id: version
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+          MANUAL_RELEASE: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          version=$(cat VERSION)
+          number='(0|[1-9][0-9]*)'
+          [[ $version =~ ^$number\.$number\.$number$ ]] || { echo "Invalid stable version: $version"; exit 1; }
+          tag="v$version"
+          publish=false
+          if [[ $GITHUB_REF_TYPE == tag ]]; then
+            [[ $GITHUB_REF_NAME == "$tag" ]] || { echo "Tag must match VERSION ($tag)"; exit 1; }
+            publish=true
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            if [[ $MANUAL_RELEASE == true ]]; then
+              publish=true
+            elif [[ $GITHUB_EVENT_NAME == push ]]; then
+              if [[ $BEFORE =~ ^0+$ ]]; then BEFORE=$(git hash-object -t tree /dev/null); fi
+              if git diff --quiet "$BEFORE" "$GITHUB_SHA" -- VERSION; then
+                publish=false
+              else
+                result=$?
+                [[ $result == 1 ]] || exit "$result"
+                publish=true
+              fi
+            fi
+          elif [[ $MANUAL_RELEASE == true ]]; then
+            echo "Publish from main or a matching release tag"; exit 1
+          fi
+          if [[ $publish == true ]]; then test -s "releases/$tag.md"; fi
+          printf 'tag=%s\npublish=%s\n' "$tag" "$publish" >> "$GITHUB_OUTPUT"
+
   package:
+    needs: version
+    concurrency:
+      group: desktop-${{ matrix.rid }}-${{ needs.version.outputs.publish == 'true' && github.run_id || github.ref }}
+      cancel-in-progress: ${{ needs.version.outputs.publish != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,3 +93,33 @@ jobs:
           name: UnoPlay-${{ matrix.rid }}
           path: UnoPlay-${{ matrix.rid }}.*
           if-no-files-found: error
+
+  release:
+    needs: [version, package]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ needs.version.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: UnoPlay-*
+          merge-multiple: true
+          path: packages
+      - name: Verify the three archives and generate checksums
+        run: |
+          python3 tools/verify_desktop_packages.py packages
+          cd packages
+          sha256sum UnoPlay-* > SHA256SUMS
+      - name: Publish the verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/publish_release.sh

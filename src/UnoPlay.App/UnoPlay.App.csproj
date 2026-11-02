@@ -6,7 +6,7 @@
     <UnoSingleProject>true</UnoSingleProject>
     <ApplicationTitle>UnoPlay</ApplicationTitle>
     <ApplicationId>com.unoplay.player</ApplicationId>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>$(Version)</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
     <WindowsCompatibilityVersion>10.0.14</WindowsCompatibilityVersion>
     <UnoDisableHotDesign>true</UnoDisableHotDesign>
