@@ -1,0 +1,14 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
+    <DefineConstants>$(DefineConstants);UNOPLAY_BROWSER</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
+    <EmbeddedResource Include="WasmScripts/unoplay-media.js" />
+  </ItemGroup>
+</Project>

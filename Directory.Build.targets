@@ -1,0 +1,6 @@
+<Project>
+  <!-- Allow a single Uno head to be built without changing the TFM of portable references. -->
+  <PropertyGroup Condition="'$(UnoPlayTarget)' != '' and '$(TargetFrameworks)' != ''">
+    <TargetFrameworks>$(UnoPlayTarget)</TargetFrameworks>
+  </PropertyGroup>
+</Project>
