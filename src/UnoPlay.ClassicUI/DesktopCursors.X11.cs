@@ -8,6 +8,9 @@ namespace UnoPlay.ClassicUI;
 internal sealed class X11SkinCursors(nint display, nuint root) : IDesktopSkinCursors
 {
     private readonly nint _connection = XGetXCBConnection(display);
+    // Uno's X11 input source installs XC_arrow on its input child. Inheriting the
+    // root window's cursor on exit would show the X server's default crosshair.
+    private readonly nuint _standard = XCreateFontCursor(display, 2);
     private uint _target;
     private nuint _shown;
     private const string X = "libX11.so.6", C = "libXcursor.so.1";
@@ -81,7 +84,7 @@ internal sealed class X11SkinCursors(nint display, nuint root) : IDesktopSkinCur
     public void Hide()
     {
         if (_target == 0) return;
-        SetWindowCursor(0);
+        SetWindowCursor((uint)_standard);
         _shown = _target = 0;
     }
 
@@ -96,7 +99,12 @@ internal sealed class X11SkinCursors(nint display, nuint root) : IDesktopSkinCur
     }
 
     public void Release(nint cursor) { if (cursor != 0) XFreeCursor(display, (nuint)cursor); }
-    public void Dispose() => XCloseDisplay(display);
+    public void Dispose()
+    {
+        if (_standard != 0) XFreeCursor(display, _standard);
+        XCloseDisplay(display);
+    }
+    [DllImport(X)] private static extern nuint XCreateFontCursor(nint display, uint shape);
     [DllImport(X)] private static extern nint XOpenDisplay(nint name);
     [DllImport(X)] private static extern int XFlush(nint display);
     [DllImport(X)] private static extern int XCloseDisplay(nint display);

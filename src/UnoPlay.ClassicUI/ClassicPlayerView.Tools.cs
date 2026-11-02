@@ -15,7 +15,11 @@ public sealed partial class ClassicPlayerView
     private ListView? _libraryTracks;
     private TextBlock? _libraryInfo, _browserStatus;
     private Grid? _webHost;
+#if UNOPLAY_BROWSER
+    private Uno.UI.NativeElementHosting.BrowserHtmlElement? _browserFrame;
+#else
     private WebView2? _web;
+#endif
     private bool _libraryUpdate, _auxActive;
     private readonly List<Uri> _webHistory = [];
     private int _historyIndex = -1;
@@ -32,7 +36,7 @@ public sealed partial class ClassicPlayerView
             window.Visibility = Visibility.Collapsed;
             ReleaseToolFocus();
             if (ReferenceEquals(window, _browserWindow))
-                _web?.CoreWebView2?.Stop();
+                StopBrowser();
             Focus(FocusState.Programmatic);
         };
         _desk.Children.Add(window);
@@ -224,6 +228,21 @@ public sealed partial class ClassicPlayerView
     {
         _address!.Text = uri.AbsoluteUri;
         _browserStatus!.Text = "Loading " + uri.Host;
+#if UNOPLAY_BROWSER
+        if (_browserFrame is null)
+        {
+            _browserFrame = Uno.UI.NativeElementHosting.BrowserHtmlElement.CreateHtmlElement("iframe");
+            _browserFrame.SetHtmlAttribute(("title", "MiniBrowser document"), ("sandbox", "allow-forms allow-scripts allow-presentation"),
+                ("referrerpolicy", "no-referrer"));
+            _browserFrame.SetCssStyle(("border", "0"), ("width", "100%"), ("height", "100%"), ("background", "white"));
+            _browserFrame.RegisterHtmlEventHandler("load", (_, _) => _browserStatus!.Text = "Page loaded");
+            _webHost!.Children.Clear();
+            _webHost.Children.Add(new ContentControl { Content = _browserFrame,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch });
+        }
+        _browserFrame.SetHtmlAttribute("src", uri.AbsoluteUri);
+        await Task.CompletedTask;
+#else
         if (_web is null)
         {
             var web = new WebView2();
@@ -249,6 +268,27 @@ public sealed partial class ClassicPlayerView
             catch { _webHost.Children.Remove(web); _web = null; _browserStatus.Text = "Embedded browsing unavailable. Use the menu to open this address externally."; throw; }
         }
         _web.Source = uri;
+#endif
+    }
+
+    private void StopBrowser()
+    {
+#if UNOPLAY_BROWSER
+        _browserFrame?.SetHtmlAttribute("src", "about:blank");
+#else
+        _web?.CoreWebView2?.Stop();
+#endif
+    }
+    private void CloseBrowserHost()
+    {
+#if UNOPLAY_BROWSER
+        _webHost?.Children.Clear();
+        _browserFrame?.Dispose();
+        _browserFrame = null;
+#else
+        _web?.Close();
+        _web = null;
+#endif
     }
     private void BrowserAction(MiniBrowserCommand command)
     {
@@ -265,12 +305,16 @@ public sealed partial class ClassicPlayerView
                     _ = Guard(() => NavigateBrowser(_webHistory[++_historyIndex]));
                 break;
             case MiniBrowserCommand.Stop:
-                _web?.CoreWebView2?.Stop();
+                StopBrowser();
                 if (_browserStatus is not null)
                     _browserStatus.Text = "Stopped";
                 break;
             case MiniBrowserCommand.Refresh:
+#if UNOPLAY_BROWSER
+                if (_historyIndex >= 0) _ = Guard(() => NavigateBrowser(_webHistory[_historyIndex]));
+#else
                 _web?.CoreWebView2?.Reload();
+#endif
                 break;
             case MiniBrowserCommand.Menu:
                 var menu = new MenuFlyout();

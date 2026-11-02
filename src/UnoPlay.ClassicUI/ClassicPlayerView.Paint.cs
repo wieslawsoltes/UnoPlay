@@ -30,7 +30,6 @@ public sealed partial class ClassicPlayerView
         p.Sprite("nums_ex", _remaining ? 99 : 90, 0, 9, 13, 36, 26);
         Digit(p, minutes / 10, 48); Digit(p, minutes % 10, 60);
         Digit(p, clock.Seconds / 10, 78); Digit(p, clock.Seconds % 10, 90);
-        if (_notice is not null && DateTime.UtcNow > _noticeUntil) _notice = null;
         var title = _notice ?? (_loaded is not null ? TitleOf(_loaded) : "UNOPLAY CLASSIC");
         int start = 0;
         if (title.Length > 30)

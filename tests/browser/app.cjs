@@ -5,6 +5,7 @@ const http = require("node:http");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 const { chromium } = require("playwright");
+const { documentPath, documentBody, verifyToolWindows } = require("./tools.cjs");
 
 const root = path.resolve(process.argv[2] || "artifacts/site");
 const mime = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
@@ -12,6 +13,10 @@ const mime = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/jav
     ".mp3": "audio/mpeg", ".mp4": "video/mp4", ".svg": "image/svg+xml", ".png": "image/png" };
 const server = http.createServer((req, res) => {
     const route = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+    if (route === documentPath) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end(documentBody);
+    }
     if (!route.startsWith("/UnoPlay/")) { res.writeHead(404); return res.end(); }
     const file = path.resolve(root, route.slice("/UnoPlay/".length) || "index.html");
     if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -49,6 +54,11 @@ const server = http.createServer((req, res) => {
         await page.goto(url);
         // Do not resize to trigger layout. The first frame must appear unassisted.
         await ready();
+        const timing = await page.evaluate(() => ({
+            coldReadyMs: Math.round(performance.now()),
+            transferredBytes: performance.getEntriesByType("resource").reduce((sum, item) => sum + item.transferSize, 0)
+        }));
+        console.log("Cold browser navigation", JSON.stringify(timing));
         const panels = page.locator('[xamltype="UnoPlay.ClassicUI.ClassicSurface"]');
         async function clickMain(x, y) {
             const b = await panels.first().boundingBox();
@@ -110,6 +120,7 @@ const server = http.createServer((req, res) => {
         await page.reload();
         await ready();
         await skinVisible();
+        if (!process.env.UNOPLAY_URL) await verifyToolWindows(page, url);
         assert.deepEqual(errors, []);
         console.log("Published app passed cold startup, MP3 playback, pause, seek, panel toggles, saved settings, windowshade, skin upload, pixel color and restored skin.");
     } finally {

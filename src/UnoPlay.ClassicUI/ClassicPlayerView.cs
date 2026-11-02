@@ -68,7 +68,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         Loaded += (_, _) =>
         {
             if (_disposed) return;
-            _timer.Start();
+            UpdateAnimationClock();
             Focus(FocusState.Programmatic);
             ArrangeWorkspace(reset: !_windowMoved);
         };
@@ -77,11 +77,10 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         {
             if (_disposed) return;
             _ticks++;
-            if (Engine.IsPlaying || _notice is not null || (_loaded is not null && !_stopped))
-            {
-                Draw(PanelId.Main);
-                if (_ticks % 6 == 0) Draw(PanelId.Playlist);
-            }
+            if (_notice is not null && DateTime.UtcNow >= _noticeUntil) _notice = null;
+            Draw(PanelId.Main);
+            if (_ticks % 6 == 0 && Engine.IsPlaying) Draw(PanelId.Playlist);
+            UpdateAnimationClock();
         };
         Queue.Tracks.CollectionChanged += TracksChanged;
         Engine.StateChanged += EngineStateChanged;
@@ -112,6 +111,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         SavePreferences();
         _preferencesTimer?.Stop();
         _disposed = true;
+        CloseBrowserHost();
         ResetCursors();
         CancelProbe();
         _timer.Stop();
@@ -214,10 +214,20 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         p.End();
     }
 
+    private void UpdateAnimationClock()
+    {
+        // A stopped or paused player with a static title has nothing to animate.
+        bool scrolling = !_stopped && !_shaded[0] && _loaded is not null && TitleOf(_loaded).Length > 30;
+        bool needed = !_disposed && IsLoaded && (_notice is not null || Engine.IsPlaying || scrolling);
+        if (needed && !_timer.IsEnabled) _timer.Start();
+        else if (!needed && _timer.IsEnabled) _timer.Stop();
+    }
+
     private void Notify(string message)
     {
         _notice = message;
         _noticeUntil = DateTime.UtcNow.AddSeconds(4);
+        UpdateAnimationClock();
         Draw(PanelId.Main);
     }
 
@@ -237,6 +247,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
             _totalDuration = SumDuration(Queue.Tracks);
             _selectedDuration = SumDuration(_selected);
         }
+        UpdateAnimationClock();
         ArrangeVideo(); DrawAll();
     });
     private void EngineFailed(object? sender, string error) => OnUi(() => { _stopped = true; Notify(error); });
