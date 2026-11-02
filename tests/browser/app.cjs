@@ -17,7 +17,16 @@ const server = http.createServer((req, res) => {
         res.writeHead(404); return res.end();
     }
     res.setHeader("Content-Type", mime[path.extname(file)] || "application/octet-stream");
-    res.setHeader("Content-Length", fs.statSync(file).size);
+    const size = fs.statSync(file).size;
+    res.setHeader("Accept-Ranges", "bytes");
+    const bytes = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range || "");
+    if (bytes) {
+        const start = Number(bytes[1]), end = bytes[2] ? Math.min(Number(bytes[2]), size - 1) : size - 1;
+        if (start > end || start >= size) { res.writeHead(416, {"Content-Range": `bytes */${size}`}); return res.end(); }
+        res.writeHead(206, {"Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1});
+        return fs.createReadStream(file, { start, end }).pipe(res);
+    }
+    res.setHeader("Content-Length", size);
     fs.createReadStream(file).pipe(res);
 });
 
@@ -49,14 +58,17 @@ const server = http.createServer((req, res) => {
             const v = document.querySelector("video");
             return v && !v.paused && v.currentTime > .15 && v.currentSrc.endsWith("/UnoPlay/media/first-light.mp3");
         });
+        console.log("First frame and playback passed");
         await clickMain(70, 96);
         await page.waitForFunction(() => document.querySelector("video")?.paused);
+        console.log("Pause passed");
         await clickMain(160, 77);
         await page.waitForFunction(() => document.querySelector("video").currentTime > 3);
+        console.log("Checking equalizer panel");
         await clickMain(230, 63);
         await panels.nth(1).waitFor({ state: "hidden" });
-        await page.waitForFunction(() => Object.values(localStorage).some(v => v.includes("unoplay.workspace.v1") || v.includes('"Visible"')) ||
-            Object.keys(localStorage).some(v => v.includes("unoplay.workspace.v1")), null, {timeout: 10000});
+        await page.waitForFunction(() => Object.values(localStorage).some(value =>
+            value.includes('"Visible":[true,false,')), null, { timeout: 10000 });
         await page.reload();
         await ready();
         await panels.nth(1).waitFor({ state: "hidden" });
