@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/UnoPlay.Core/UnoPlay.Core.csproj" />
     <ProjectReference Include="../../src/UnoPlay.ClassicSkins/UnoPlay.ClassicSkins.csproj" />
   </ItemGroup>
 </Project>

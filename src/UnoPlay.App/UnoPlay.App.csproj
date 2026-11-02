@@ -1,12 +1,14 @@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <TargetFrameworks>net10.0-desktop;net10.0-browserwasm</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <UnoSingleProject>true</UnoSingleProject>
     <ApplicationTitle>UnoPlay</ApplicationTitle>
     <ApplicationId>com.unoplay.player</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
+    <WindowsCompatibilityVersion>10.0.14</WindowsCompatibilityVersion>
+    <UnoDisableHotDesign>true</UnoDisableHotDesign>
     <Description>A skinnable classic media player.</Description>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">
@@ -16,6 +18,9 @@
     <Content Include="../UnoPlay.Media/BrowserVendor/*" Link="media/%(Filename)%(Extension)" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <UnoIcon Include="Assets/player.svg" />
+    <UnoSplashScreen Include="Assets/player.svg" Color="#151922" BaseSize="72,72" />
+    <Content Include="Assets/Media/first-light.mp3" Link="media/first-light.mp3" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../UnoPlay.ClassicUI/UnoPlay.ClassicUI.csproj" />
   </ItemGroup>
 </Project>

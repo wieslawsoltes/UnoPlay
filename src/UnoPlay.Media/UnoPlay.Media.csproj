@@ -1,6 +1,7 @@
 <Project Sdk="Uno.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net10.0-browserwasm;net10.0-desktop</TargetFrameworks>
+    <OutputType>Library</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -10,5 +11,8 @@
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
     <EmbeddedResource Include="WasmScripts/unoplay-media.js" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">
+    <PackageReference Include="SoundFlow" Version="1.4.2" />
   </ItemGroup>
 </Project>

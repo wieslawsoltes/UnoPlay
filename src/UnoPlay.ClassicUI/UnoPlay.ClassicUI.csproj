@@ -1,0 +1,15 @@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-desktop;net10.0-browserwasm</TargetFrameworks>
+    <OutputType>Library</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <GenerateLibraryLayout>true</GenerateLibraryLayout>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../UnoPlay.ClassicSkins/UnoPlay.ClassicSkins.csproj" />
+    <ProjectReference Include="../UnoPlay.Media/UnoPlay.Media.csproj" />
+    <ProjectReference Include="../UnoPlay.Core/UnoPlay.Core.csproj" />
+  </ItemGroup>
+</Project>

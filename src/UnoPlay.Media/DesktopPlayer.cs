@@ -1,4 +1,5 @@
 #if !UNOPLAY_BROWSER
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Media.Core;
@@ -9,45 +10,82 @@ namespace UnoPlay.Media;
 
 public sealed partial class PlayerEngine
 {
-    private readonly MediaPlayerElement _element;
-    private readonly MediaPlayer _player;
-    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".mp3", ".mp2", ".flac", ".wav", ".m4a", ".aac", ".oga", ".ogg", ".opus", ".aiff", ".wma"
-    };
+    private readonly ContentControl _host;
+    private MediaPlayerElement? _element;
+    private MediaPlayer? _player;
+    private DesktopAudio? _audio;
+    private bool _usingAudio;
+    private double[] _gains = new double[11];
     private bool _hasVideo;
 
     public PlayerEngine()
     {
-        View = _element = new MediaPlayerElement
+        View = _host = new ContentControl
         {
-            AutoPlay = false,
-            AreTransportControlsEnabled = false,
-            Stretch = Stretch.Uniform
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch
         };
-        _player = new MediaPlayer { AutoPlay = false };
-        _element.SetMediaPlayer(_player);
-        _player.MediaOpened += OnOpened;
-        _player.MediaEnded += OnEnded;
-        _player.MediaFailed += OnFailed;
-        _player.PlaybackSession.PlaybackStateChanged += OnStateChanged;
     }
 
-    public bool IsPlaying => _player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+    public bool IsPlaying => _usingAudio ? _audio!.Playing : _player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     public bool HasVideo => _hasVideo;
     public bool CanSeek => Duration > TimeSpan.Zero;
-    public bool SupportsDsp => false;
-    public TimeSpan Position => _player.PlaybackSession.Position;
-    public TimeSpan Duration => _player.PlaybackSession.NaturalDuration;
-    public byte[] GetSpectrum() => Array.Empty<byte>();
-    public byte[] GetWaveform() => Array.Empty<byte>();
+    public bool SupportsDsp => _usingAudio;
+    public TimeSpan Position => _usingAudio ? _audio!.Position : _player?.PlaybackSession.Position ?? TimeSpan.Zero;
+    public TimeSpan Duration => _usingAudio ? _audio!.Duration : _player?.PlaybackSession.NaturalDuration ?? TimeSpan.Zero;
+    public byte[] GetSpectrum() => _usingAudio ? _audio!.Signal.Spectrum() : [];
+    public byte[] GetWaveform() => _usingAudio ? _audio!.Signal.Waveform() : [];
+
+    private void EnsureMediaElement()
+    {
+        if (_player != null) return;
+        var element = new MediaPlayerElement { AutoPlay = false, AreTransportControlsEnabled = false, Stretch = Stretch.Uniform };
+        var player = new MediaPlayer { AutoPlay = false, Volume = _volume };
+        element.SetMediaPlayer(player);
+        player.MediaOpened += OnOpened;
+        player.MediaEnded += OnEnded;
+        player.MediaFailed += OnFailed;
+        player.PlaybackSession.PlaybackStateChanged += OnStateChanged;
+        _element = element;
+        _player = player;
+        _host.Content = element;
+    }
 
     private void OpenUri(Uri source)
     {
         if (!source.IsAbsoluteUri)
             throw new ArgumentException("Desktop playback requires an absolute file or network URI.", nameof(source));
-        _hasVideo = !AudioExtensions.Contains(Path.GetExtension(source.AbsolutePath));
-        _element.Source = MediaSource.CreateFromUri(source);
+        _usingAudio = false;
+        _hasVideo = false;
+        _audio?.Clear();
+        if (_element?.Source != null) _element.Source = null;
+        var extension = Path.GetExtension(source.AbsolutePath).ToLowerInvariant();
+        if (source.IsFile && extension is ".mp3" or ".wav" or ".flac")
+        {
+            try
+            {
+                if (_audio == null)
+                {
+                    _audio = new DesktopAudio();
+                    _audio.Ended += OnAudioEnded;
+                }
+                _audio.Open(source.LocalPath);
+                _audio.Signal.Equalize(_gains);
+                _audio.Signal.Balance(_balance);
+                _audio.Signal.Volume(_volume);
+                _usingAudio = true;
+                RaiseStateChanged();
+                return;
+            }
+            catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or DllNotFoundException or BadImageFormatException)
+            {
+                // A different system codec or device may still decode the source.
+                System.Diagnostics.Trace.TraceWarning("PCM output unavailable: {0}", ex.Message);
+            }
+        }
+        EnsureMediaElement();
+        _hasVideo = extension is not (".mp3" or ".mp2" or ".flac" or ".wav" or ".m4a" or ".aac" or ".oga" or ".ogg" or ".opus" or ".aiff" or ".wma");
+        _element!.Source = MediaSource.CreateFromUri(source);
     }
 
     private Task OpenFileAsync(StorageFile file, int generation)
@@ -59,34 +97,68 @@ public sealed partial class PlayerEngine
     public static Task<IReadOnlyList<BrowserMediaFile>> PickBrowserFilesAsync() =>
         throw new PlatformNotSupportedException("Use a StorageFile picker on desktop.");
 
-    public Task PlayAsync() { _player.Play(); return Task.CompletedTask; }
-    public void Pause() => _player.Pause();
-    public void Seek(TimeSpan position) { if (CanSeek) _player.PlaybackSession.Position = position; }
-    private void ApplyVolume(double value) => _player.Volume = value;
+    public Task PlayAsync()
+    {
+        if (_usingAudio) { _audio!.Play(); RaiseStateChanged(); }
+        else _player?.Play();
+        return Task.CompletedTask;
+    }
 
-    // Uno's desktop MediaPlayer does not expose PCM or implement AudioBalance
-    // and AddAudioEffect. Hosts query SupportsDsp to gate those controls.
-    private void ApplyBalance(double value) { }
-    private void ApplyEqualizer(double[] values) { }
+    public void Pause()
+    {
+        if (_usingAudio) { _audio!.Pause(); RaiseStateChanged(); }
+        else _player?.Pause();
+    }
 
-    private void OnOpened(MediaPlayer sender, object args) => Dispatch(RaiseStateChanged);
-    private void OnEnded(MediaPlayer sender, object args) => Dispatch(RaiseEnded);
-    private void OnFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args) => Dispatch(() => RaiseFailed(args.ErrorMessage));
-    private void OnStateChanged(MediaPlaybackSession sender, object args) => Dispatch(RaiseStateChanged);
+    public void Seek(TimeSpan position)
+    {
+        if (!CanSeek) return;
+        if (_usingAudio) _audio!.Seek(position);
+        else _player!.PlaybackSession.Position = position;
+    }
+
+    private void ApplyVolume(double value)
+    {
+        _audio?.Signal.Volume(value);
+        if (_player != null) _player.Volume = value;
+    }
+
+    private void ApplyBalance(double value) => _audio?.Signal.Balance(value);
+    private void ApplyEqualizer(double[] values) { _gains = values; _audio?.Signal.Equalize(values); }
+
+    private void OnAudioEnded(object? sender, EventArgs args)
+    {
+        int generation = _openGeneration;
+        Dispatch(() => { if (_usingAudio && generation == _openGeneration) RaiseEnded(); });
+    }
+
+    private void OnOpened(MediaPlayer sender, object args) => Dispatch(() => { if (!_usingAudio) RaiseStateChanged(); });
+    private void OnEnded(MediaPlayer sender, object args) => Dispatch(() => { if (!_usingAudio) RaiseEnded(); });
+    private void OnFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args) => Dispatch(() => { if (!_usingAudio) RaiseFailed(args.ErrorMessage); });
+    private void OnStateChanged(MediaPlaybackSession sender, object args) => Dispatch(() => { if (!_usingAudio) RaiseStateChanged(); });
     private void Dispatch(Action update)
     {
-        if (_element.DispatcherQueue.HasThreadAccess) { if (!_disposed) update(); }
-        else _element.DispatcherQueue.TryEnqueue(() => { if (!_disposed) update(); });
+        if (_host.DispatcherQueue.HasThreadAccess) { if (!_disposed) update(); }
+        else _host.DispatcherQueue.TryEnqueue(() => { if (!_disposed) update(); });
     }
 
     private void DisposeTransport()
     {
-        _player.MediaOpened -= OnOpened;
-        _player.MediaEnded -= OnEnded;
-        _player.MediaFailed -= OnFailed;
-        _player.PlaybackSession.PlaybackStateChanged -= OnStateChanged;
-        _element.Source = null;
-        _player.Dispose();
+        if (_audio != null)
+        {
+            _audio.Ended -= OnAudioEnded;
+            _audio.Dispose();
+        }
+        if (_player != null)
+        {
+            _player.MediaOpened -= OnOpened;
+            _player.MediaEnded -= OnEnded;
+            _player.MediaFailed -= OnFailed;
+            _player.PlaybackSession.PlaybackStateChanged -= OnStateChanged;
+            _element!.Source = null;
+            _player.Dispose();
+        }
+        _host.Content = null;
     }
 }
 #endif
