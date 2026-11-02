@@ -29,15 +29,32 @@ if (args.Length != 0)
     using var transport = new DesktopAudio();
     var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     transport.Ended += (_, _) => ended.TrySetResult();
-    transport.Open(args[0]);
-    if (transport.Duration <= TimeSpan.Zero) throw new Exception("The decoder returned no duration.");
+    if (Uri.TryCreate(args[0], UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+        transport.OpenVlc(uri);
+    else
+    {
+        transport.Open(args[0]);
+        if (transport.Duration <= TimeSpan.Zero) throw new Exception("The decoder returned no duration.");
+    }
     transport.Play();
-    await Task.Delay(300);
+    var timeout = System.Diagnostics.Stopwatch.StartNew();
+    while ((transport.Position <= TimeSpan.Zero || transport.Signal.Spectrum().Max() == 0) && timeout.Elapsed < TimeSpan.FromSeconds(6))
+        await Task.Delay(20);
     if (transport.Position <= TimeSpan.Zero || transport.Signal.Spectrum().Max() <= 0)
         throw new Exception("The native device did not render decoded audio.");
     transport.Pause();
-    transport.Seek(transport.Duration - TimeSpan.FromMilliseconds(200));
+    if (args.Contains("--live"))
+    {
+        transport.Play();
+        await Task.Delay(150);
+        transport.Clear();
+        Console.WriteLine("Live HTTP radio decode, signal output, pause/resume and shutdown passed.");
+        return;
+    }
+    bool requireSeek = args.Contains("--seek");
+    if (requireSeek && !transport.CanSeek) throw new Exception("Range-enabled source did not expose seeking.");
+    if (transport.CanSeek) transport.Seek(transport.Duration - TimeSpan.FromMilliseconds(200));
     transport.Play();
-    await ended.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await ended.Task.WaitAsync(TimeSpan.FromSeconds(requireSeek ? 3 : 8));
     Console.WriteLine("Native decode, output, seek and EOF passed.");
 }

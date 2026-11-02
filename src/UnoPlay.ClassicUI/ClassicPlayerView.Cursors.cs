@@ -1,8 +1,11 @@
 #if UNOPLAY_BROWSER
 using System.Runtime.InteropServices.JavaScript;
+#else
+using Uno.UI.NativeElementHosting;
+using Uno.UI.Xaml;
+#endif
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Input;
-#endif
 
 namespace UnoPlay.ClassicUI;
 
@@ -11,10 +14,15 @@ public sealed partial class ClassicPlayerView
 #if UNOPLAY_BROWSER
     private static int _nextCursorOwner;
     private readonly int _cursorOwner = Interlocked.Increment(ref _nextCursorOwner);
-    private readonly Dictionary<string, int> _cursorHandles = new(StringComparer.OrdinalIgnoreCase);
+#else
+    private IDesktopSkinCursors? _nativeCursors;
+    private bool _cursorBackendUnavailable;
+#endif
+    private readonly Dictionary<string, nint> _cursorHandles = new(StringComparer.OrdinalIgnoreCase);
 
     private void InitializeCursors()
     {
+        Unloaded += (_, _) => ResetCursors();
         for (var i = 0; i < _panels.Length; i++)
         {
             var id = (PanelId)i;
@@ -23,23 +31,28 @@ public sealed partial class ClassicPlayerView
             {
                 if (!_skin.HasCursors || args.Pointer.PointerDeviceType != PointerDeviceType.Mouse) return;
                 var point = args.GetCurrentPoint(panel).Position;
-                if (!panel.AcceptsPoint(point)) { BrowserCursors.Hide(_cursorOwner); return; }
+                if (!panel.AcceptsPoint(point)) { HideSkinCursor(); return; }
                 string normal = id switch
                 {
                     PanelId.Equalizer => "eqnormal",
                     PanelId.Playlist => _shaded[2] ? "pwsnorm" : "pnormal",
                     _ => _shaded[0] ? "wsnormal" : "normal"
                 };
-                string role = CursorRole(id, (int)point.X, (int)point.Y) ?? normal;
-                int handle = CursorHandle(role);
+                string role = CursorRole(id, (int)(point.X / panel.Zoom), (int)(point.Y / panel.Zoom)) ?? normal;
+                nint handle = CursorHandle(role);
                 if (handle == 0 && role != normal) handle = CursorHandle(normal);
                 if (handle == 0 && normal != "normal") handle = CursorHandle("normal");
-                if (handle == 0) BrowserCursors.Hide(_cursorOwner);
-                else BrowserCursors.Show(_cursorOwner, handle);
+                if (handle == 0) HideSkinCursor();
+                else
+#if UNOPLAY_BROWSER
+                    BrowserCursors.Show(_cursorOwner, (int)handle);
+#else
+                    _nativeCursors?.Show(handle);
+#endif
             }
             panel.AddHandler(PointerEnteredEvent, new PointerEventHandler(Update), true);
             panel.AddHandler(PointerMovedEvent, new PointerEventHandler(Update), true);
-            panel.PointerExited += (_, _) => { if (_cursorHandles.Count > 0) BrowserCursors.Hide(_cursorOwner); };
+            panel.PointerExited += (_, _) => { if (_cursorHandles.Count > 0) HideSkinCursor(); };
         }
     }
 
@@ -78,24 +91,70 @@ public sealed partial class ClassicPlayerView
         return null;
     }
 
-    private int CursorHandle(string name)
+    private nint CursorHandle(string name)
     {
-        if (_cursorHandles.TryGetValue(name, out int handle)) return handle;
+        if (_cursorHandles.TryGetValue(name, out nint handle)) return handle;
         var bytes = _skin.GetCursor(name);
-        return _cursorHandles[name] = bytes.IsEmpty ? 0 : BrowserCursors.Register(bytes.ToArray());
+        if (bytes.IsEmpty) return _cursorHandles[name] = 0;
+#if UNOPLAY_BROWSER
+        return _cursorHandles[name] = BrowserCursors.Register(bytes.ToArray());
+#else
+        if (_cursorBackendUnavailable) return 0;
+        try
+        {
+            if (_nativeCursors == null)
+            {
+                var window = Uno.UI.ApplicationHelper.Windows.FirstOrDefault(w => w.Content?.XamlRoot == XamlRoot);
+                if (window is null) return 0;
+                _nativeCursors = window.GetNativeWindow() switch
+                {
+                    X11NativeWindow x when OperatingSystem.IsLinux() => X11SkinCursors.Open(x.WindowId),
+                    Win32NativeWindow w when OperatingSystem.IsWindows() => new Win32SkinCursors(w.Hwnd),
+                    _ => null
+                };
+                if (_nativeCursors == null) { _cursorBackendUnavailable = true; return 0; }
+            }
+            return _cursorHandles[name] = _nativeCursors.Load(bytes);
+        }
+        catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or DllNotFoundException or EntryPointNotFoundException)
+        {
+            if (error is DllNotFoundException or EntryPointNotFoundException) _cursorBackendUnavailable = true;
+            return _cursorHandles[name] = 0;
+        }
+#endif
+    }
+
+    private void HideSkinCursor()
+    {
+#if UNOPLAY_BROWSER
+        BrowserCursors.Hide(_cursorOwner);
+#else
+        _nativeCursors?.Hide();
+#endif
     }
 
     private void ResetCursors()
     {
-        if (_cursorHandles.Count == 0) return;
-        BrowserCursors.Hide(_cursorOwner);
-        foreach (int id in _cursorHandles.Values) if (id != 0) BrowserCursors.Release(id);
-        _cursorHandles.Clear();
-    }
+        if (_cursorHandles.Count > 0)
+        {
+            HideSkinCursor();
+            foreach (nint cursor in _cursorHandles.Values)
+            {
+                if (cursor == 0) continue;
+#if UNOPLAY_BROWSER
+                BrowserCursors.Release((int)cursor);
 #else
-    private void InitializeCursors() { }
-    private void ResetCursors() { }
+                _nativeCursors?.Release(cursor);
 #endif
+            }
+            _cursorHandles.Clear();
+        }
+#if !UNOPLAY_BROWSER
+        _nativeCursors?.Dispose();
+        _nativeCursors = null;
+        _cursorBackendUnavailable = false;
+#endif
+    }
 }
 #if UNOPLAY_BROWSER
 internal static partial class BrowserCursors

@@ -60,6 +60,8 @@ public sealed partial class ClassicPlayerView
                 Async("Load classic skin (.wsz)…", PickSkin); Async("Use built-in skin", async () => { ApplySkin(ClassicSkin.Default); await CacheSkinAsync(null); }); Sep();
                 Add(_visible[1] ? "Hide equalizer" : "Show equalizer", () => Toggle(PanelId.Equalizer));
                 Add(_visible[2] ? "Hide playlist" : "Show playlist", () => Toggle(PanelId.Playlist));
+                Add("Media library…    Alt+L",ShowLibrary);
+                Add("MiniBrowser…    Alt+B",ShowMiniBrowser);
                 Add("Toggle video window", () => { _videoEnabled = !_videoEnabled; ArrangeVideo(); });
                 Add("Toggle double size", Zoom);
                 Add("Arrange windows", () => { _windowMoved = false; ArrangeWorkspace(true); });
@@ -70,14 +72,41 @@ public sealed partial class ClassicPlayerView
 
     private void ApplyEq()
     { Engine.SetEqualizer(_eq, _preamp, _bands); Draw(PanelId.Equalizer); }
+    private static string PresetKey(Track track)
+    {
+        var identity = track.Source is BrowserMediaFile file
+            ? FormattableString.Invariant($"file:{file.Length}/{file.LastModified}/{file.Name}")
+            : track.Location;
+        return "unoplay.eq." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity)));
+    }
+
     private void RememberEq()
     {
         if (_loaded is null) return;
-        _autoPresets[_loaded.Location] = [_preamp, .. _bands]; Notify("TRACK PRESET SAVED");
+        var key = PresetKey(_loaded);
+        _autoPresets[key] = [_preamp, .. _bands];
+        if (_preferencesEnabled)
+        {
+            var preset = EqualizerPreset.FromDecibels("Entry1", _bands, _preamp);
+            ApplicationData.Current.LocalSettings.Values[key] = Convert.ToBase64String(EqualizerFile.Write([preset]));
+        }
+        Notify("TRACK PRESET SAVED");
     }
     private void RecallEq()
     {
-        if (_loaded is null || !_autoPresets.TryGetValue(_loaded.Location, out var values)) return;
+        if (_loaded is null) return;
+        var key = PresetKey(_loaded);
+        if (!_autoPresets.TryGetValue(key, out var values))
+        {
+            if (!_preferencesEnabled || !ApplicationData.Current.LocalSettings.Values.TryGetValue(key, out var entry)
+                || entry is not string encoded) return;
+            var bank = EqualizerFile.Read(Convert.FromBase64String(encoded));
+            if (bank.Count != 1) return;
+            values = new double[11];
+            values[0] = bank[0].Preamp;
+            for (int i = 0; i < 10; i++) values[i + 1] = bank[0].GetBand(i);
+            _autoPresets[key] = values;
+        }
         _preamp = values[0]; Array.Copy(values, 1, _bands, 0, 10); ApplyEq();
     }
 

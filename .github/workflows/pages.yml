@@ -53,3 +53,11 @@ jobs:
       - name: Deploy
         id: publish
         uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - name: Verify the live Pages deployment
+        env:
+          UNOPLAY_URL: ${{ steps.publish.outputs.page_url }}
+        run: |
+          npm ci --prefix tests/browser
+          (cd tests/browser && npx playwright install --with-deps chromium)
+          node tests/browser/app.cjs

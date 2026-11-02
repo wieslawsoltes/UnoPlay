@@ -61,6 +61,12 @@ public sealed partial class PlayerEngine
         }
     }
 
+    private Task OpenUriAsync(Uri source, int generation)
+    {
+        OpenUri(source);
+        return Task.CompletedTask;
+    }
+
     private void OpenUri(Uri source)
     {
         string? old = _ownedUrl;
@@ -100,7 +106,7 @@ public sealed partial class PlayerEngine
     {
         using var json = JsonDocument.Parse(await BrowserNative.Pick());
         return json.RootElement.EnumerateArray()
-            .Select(f => new BrowserMediaFile(f[0].GetString()!, f[1].GetString()!)).ToArray();
+            .Select(f => new BrowserMediaFile(f[0].GetString()!, f[1].GetString()!, f[2].GetInt64(), f[3].GetInt64())).ToArray();
     }
 
     public Task PlayAsync() => BrowserNative.Play(_id);

@@ -53,9 +53,7 @@ public sealed partial class PlayerEngine : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(source);
-        _openGeneration++;
-        OpenUri(source);
-        return Task.CompletedTask;
+        return OpenUriAsync(source, ++_openGeneration);
     }
 
     public Task OpenAsync(StorageFile file)
@@ -67,6 +65,7 @@ public sealed partial class PlayerEngine : IDisposable
 
     public void Stop()
     {
+        _openGeneration++;
         Pause();
         if (CanSeek) Seek(TimeSpan.Zero);
     }
@@ -91,7 +90,10 @@ public sealed partial class PlayerEngine : IDisposable
 public sealed class BrowserMediaFile : IDisposable
 {
     private bool _disposed;
-    internal BrowserMediaFile(string name, string url) => (Name, Uri) = (name, new Uri(url));
+    internal BrowserMediaFile(string name, string url, long length, long lastModified)
+        => (Name, Uri, Length, LastModified) = (name, new Uri(url), length, lastModified);
+    public long Length { get; }
+    public long LastModified { get; }
     public string Name { get; }
     public Uri Uri { get; }
     public void Dispose()

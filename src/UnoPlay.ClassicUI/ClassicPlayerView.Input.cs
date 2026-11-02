@@ -35,6 +35,8 @@ public sealed partial class ClassicPlayerView
                     int action = i;
                     Button(id, i == 5 ? "Open files" : TransportNames[i], starts[i], 2, starts[i + 1] - starts[i], 10, _ => Transport(action));
                 }
+                Button(id, "Visualization", 79, 4, 38, 7, _ => CycleVis());
+                Button(id, "Time display", 127, 3, 36, 9, _ => { _remaining = !_remaining; DrawAll(); });
                 Slider(id, "Seek", 226, 4, 17, 7, false, 3, n => SeekFraction(n));
                 return;
             }
@@ -49,7 +51,8 @@ public sealed partial class ClassicPlayerView
             Button(id, "Equalizer", 219, 58, 23, 12, _ => Toggle(PanelId.Equalizer));
             Button(id, "Playlist", 242, 58, 23, 12, _ => Toggle(PanelId.Playlist));
             Button(id, "Time display", 37, 24, 63, 16, _ => { _remaining = !_remaining; DrawAll(); });
-            Button(id, "Visualization", 24, 43, 76, 16, _ => CycleVis());
+            var visualizer = Button(id, "Visualization", 24, 43, 76, 16, _ => CycleVis());
+            visualizer.RightTapped += (_, e) => { e.Handled = true; VisualizationMenu(visualizer); };
             Button(id, "Track information", 108, 23, 156, 14, el => _ = Guard(TrackInfo));
             Button(id, "About UnoPlay", 252, 90, 15, 17, el => _ = Guard(About));
             Button(id, "Player menu", 10, 24, 8, 9, el => Menu("options", el));
@@ -134,7 +137,7 @@ public sealed partial class ClassicPlayerView
         }), true);
         b.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => { _pressed = null; Draw(id); }), true);
         b.PointerCaptureLost += (_, _) => { if (_pressed == name) { _pressed = null; Draw(id); } };
-        b.Click += (_, _) => { if (!outside) { Activate(id); action(b); } outside = false; };
+        b.Click += (_, _) => { if (!outside) { Activate(id); action(b); QueuePreferencesSave(); } outside = false; };
         Panel(id).PlaceTarget(b, x, y, w, h);
         Panel(id).Targets.Children.Add(b);
         return b;
@@ -272,6 +275,9 @@ public sealed partial class ClassicPlayerView
         if (Engine.HasVideo && (e.Key == VirtualKey.F11 || (e.Key == VirtualKey.Escape && Engine.IsVideoFullscreen)))
         { e.Handled = true; _ = Guard(Engine.ToggleVideoFullscreenAsync); return; }
         if (_popupLayer is not null && e.Key == VirtualKey.Escape) { DismissClassicMenu(); e.Handled = true; return; }
+        if (Modifier(VirtualKey.Menu) && e.Key is VirtualKey.L or VirtualKey.B)
+        { e.Handled = true; if(e.Key==VirtualKey.L)ShowLibrary();else ShowMiniBrowser();return; }
+        if (e.OriginalSource is TextBox || (XamlRoot is {} root && FocusManager.GetFocusedElement(root) is TextBox)) return;
         bool ctrl = Modifier(VirtualKey.Control);
         e.Handled = true;
         if (ctrl)

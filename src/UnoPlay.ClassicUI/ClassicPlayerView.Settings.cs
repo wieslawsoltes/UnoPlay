@@ -10,7 +10,8 @@ namespace UnoPlay.ClassicUI;
 internal sealed record WorkspacePreferences(double Volume, double Balance, bool Repeat, bool Shuffle,
     bool Equalizer, bool Auto, double Preamp, double[] Bands, int Visualizer, bool Remaining,
     bool DoubleSize, bool Video, bool[] Visible, bool[] Rolled, bool Moved, double[] X, double[] Y,
-    int PlaylistWidth, int PlaylistHeight);
+    int PlaylistWidth, int PlaylistHeight, int Spectrum = 0, int Scope = 1,
+    bool Thin = false, bool Peaks = true, double Falloff = 1.8);
 
 [JsonSerializable(typeof(WorkspacePreferences))]
 internal partial class PreferencesJson : JsonSerializerContext { }
@@ -54,6 +55,9 @@ public sealed partial class ClassicPlayerView
                 _playlistHeight = Math.Clamp(p.PlaylistHeight, 116, 1600);
                 _windowMoved = _placed = p.Moved;
                 for (int i = 0; i < 3; i++) _points[i] = new Point(p.X[i], p.Y[i]);
+                _spectrumStyle = (ClassicSkins.SpectrumStyle)Math.Clamp(p.Spectrum, 0, 2);
+                _scopeStyle = (ClassicSkins.ScopeStyle)Math.Clamp(p.Scope, 0, 2);
+                _thinBars = p.Thin; _drawPeaks = p.Peaks; _falloff = Math.Clamp(p.Falloff, .8, 3.4);
                 ApplyEq();
                 RefreshLayout();
             }
@@ -90,7 +94,8 @@ public sealed partial class ClassicPlayerView
         {
             var p = new WorkspacePreferences(Engine.Volume, Engine.Balance, Queue.Repeat, Queue.Shuffle, _eq, _auto,
                 _preamp, _bands, _visMode, _remaining, _doubleSize, _videoEnabled, _visible, _shaded, _windowMoved,
-                _points.Select(p => p.X).ToArray(), _points.Select(p => p.Y).ToArray(), _playlistWidth, _playlistHeight);
+                _points.Select(p => p.X).ToArray(), _points.Select(p => p.Y).ToArray(), _playlistWidth, _playlistHeight,
+                (int)_spectrumStyle, (int)_scopeStyle, _thinBars, _drawPeaks, _falloff);
             ApplicationData.Current.LocalSettings.Values[PreferencesKey] = JsonSerializer.Serialize(p, PreferencesJson.Default.WorkspacePreferences);
         }
         catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Could not save UnoPlay preferences: {ex.Message}"); }

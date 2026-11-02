@@ -230,27 +230,52 @@ for x,labs in [(0,['URL','DIR','FILE']),(54,['ALL','CROP','REM','MISC']),(104,['
         for k in (0,1): cap(x+k*23,111+j*19,22,18,label,bool(k))
 
 # The 2.9 video skin uses its own title/frame tiles and five independent pressed sprites.
-sheet('video',234,119)
-for y,active in [(0,True),(21,False)]:
-    for x,w in [(0,25),(26,100),(127,25),(153,25)]:
-        grad(x,y,w,20,'#495062','#282e3b')
-        for j in [3,5,7,9]: rect(x,y+j,w,1,'#ac884e' if active else '#647080')
-        rect(x,y+15,w,2,rim); rect(x,y+17,w,1,rail)
-    rect(53,y+2,46,11,body); center(26,y,100,14,'VIDEO',silver)
-    cap(167,y+3,9,9,'X')
-for x,w in [(127,11),(139,8)]:
-    rect(x,42,w,29,body); rect(x,42,1,29,bright); rect(x+w-2,42,2,29,rim)
-for x,y,w in [(0,42,125),(0,81,125),(127,81,25)]:
-    grad(x,y,w,38,'#3b4353','#272c39')
-    rect(x,y+36,w,2,rim)
-    if w==25 or y==81: rect(x,y+9,w,17,black)
-well(90,51,35,17)
-for k in range(3):
-    d.line((117+k*2,114,122,109+k*2),fill=bright)
+for kind, caption, marks in [('video','VIDEO',['F','1X','2X','TV','+']),
+                             ('mb','BROWSER',['<','>','X','R','M'])]:
+    sheet(kind,234,119)
+    for y,active in [(0,True),(21,False)]:
+        for x,w in [(0,25),(26,100),(127,25),(153,25)]:
+            grad(x,y,w,20,'#495062','#282e3b')
+            for j in [3,5,7,9]: rect(x,y+j,w,1,'#ac884e' if active else '#647080')
+            rect(x,y+15,w,2,rim); rect(x,y+17,w,1,rail)
+        rect(50,y+2,52,11,body); center(26,y,100,14,caption,silver)
+        cap(167,y+3,9,9,'X')
+    for x,w in [(127,11),(139,8)]:
+        rect(x,42,w,29,body); rect(x,42,1,29,bright); rect(x+w-2,42,2,29,rim)
+    for x,y,w in [(0,42,125),(0,81,125),(127,81,25)]:
+        grad(x,y,w,38,'#3b4353','#272c39')
+        rect(x,y+36,w,2,rim)
+        if w==25 or y==81: rect(x,y+9,w,17,black)
+    well(90,51,35,17)
+    for k in range(3):
+        d.line((117+k*2,114,122,109+k*2),fill=bright)
+    cap(148,42,9,9,'X',True)
+    for i,mark in enumerate(marks):
+        for x,y,down in [(9+i*15,51,False),(158+i*15,42,True)]:
+            cap(x,y,15,18,mark if mark not in ['<','>'] else '',down)
+            if mark in ['<','>']:
+                cx=x+7+int(down); cy=y+9+int(down); step=1 if mark=='>' else -1
+                d.polygon([(cx+3*step,cy),(cx-2*step,cy-3),(cx-2*step,cy+3)],fill=ink)
+
+# Generic windows store dynamic title glyphs in separated character cells.
+sheet('gen',194,109)
+for yy,selected in [(0,True),(21,False)]:
+    for xx in [0,26,52,78,104,130]:
+        grad(xx,yy,25,20,'#495062','#282e3b')
+        if xx not in (52,):
+            for j in [3,5,7,9]: rect(xx,yy+j,25,1,'#ac884e' if selected else '#647080')
+        rect(xx,yy+15,25,2,rim); rect(xx,yy+17,25,1,rail)
+    cap(144,yy+3,9,9,'X')
+for xx,yy,ww,hh in [(0,42,125,14),(0,57,125,14),(127,72,25,14)]:
+    grad(xx,yy,ww,hh,'#3b4353','#272c39'); rect(xx,yy+12,ww,2,rim)
+for xx,ww,hh in [(127,11,29),(139,8,29),(158,11,24),(170,8,24)]:
+    rect(xx,42,ww,hh,body);rect(xx,42,1,hh,bright);rect(xx+ww-2,42,2,hh,rim)
 cap(148,42,9,9,'X',True)
-for i,mark in enumerate(['F','1X','2X','TV','+']):
-    for x,y,down in [(9+i*15,51,False),(158+i*15,42,True)]:
-        cap(x,y,15,18,mark,down)
+for yy,letters,color in [(72,'0123456789-.',silver),(80,'0123456789-.',muted),
+                         (88,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',silver),(96,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','#9ba6ae')]:
+    rect(0,yy,126 if yy<88 else 194,7,'#f000e0')
+    for j,letter in enumerate(letters):
+        xx=1+6*j;rect(xx,yy,5,7,body);glyph(xx,yy+1,letter,color)
 
 # Use deterministic records so rebuilding the editable artwork is byte-for-byte reproducible.
 out=Path(__file__).with_name('Midnight.wsz')

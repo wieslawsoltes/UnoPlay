@@ -43,7 +43,7 @@ public sealed partial class ClassicPlayerView
     {
         for (int i = 0; i < _bands.Length; i++) _bands[i] = preset.GetBand(i);
         _preamp = preset.Preamp;
-        _eq = Engine.SupportsDsp;
+        _eq = _loaded is null || Engine.SupportsDsp;
         ApplyEq();
         QueuePreferencesSave();
         Notify(preset.Name.ToUpperInvariant());

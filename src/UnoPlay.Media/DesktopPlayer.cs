@@ -18,6 +18,8 @@ public sealed partial class PlayerEngine
     private bool _usingAudio;
     private double[] _gains = new double[11];
     private bool _hasVideo;
+    private static readonly HttpClient RadioHeaders = new() { Timeout = TimeSpan.FromSeconds(2) };
+    private CancellationTokenSource? _probe;
 
     public PlayerEngine()
     {
@@ -30,7 +32,7 @@ public sealed partial class PlayerEngine
 
     public bool IsPlaying => _usingAudio ? _audio!.Playing : _player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
     public bool HasVideo => _hasVideo;
-    public bool CanSeek => Duration > TimeSpan.Zero;
+    public bool CanSeek => _usingAudio ? _audio!.CanSeek : Duration > TimeSpan.Zero;
     public bool SupportsDsp => _usingAudio;
     public TimeSpan Position => _usingAudio ? _audio!.Position : _player?.PlaybackSession.Position ?? TimeSpan.Zero;
     public TimeSpan Duration => _usingAudio ? _audio!.Duration : _player?.PlaybackSession.NaturalDuration ?? TimeSpan.Zero;
@@ -58,16 +60,44 @@ public sealed partial class PlayerEngine
         _host.Content = element;
     }
 
-    private void OpenUri(Uri source)
+    private async Task OpenUriAsync(Uri source, int generation)
     {
         if (!source.IsAbsoluteUri)
             throw new ArgumentException("Desktop playback requires an absolute file or network URI.", nameof(source));
+        _probe?.Cancel();
+        bool audioHint = false;
+        // Radio endpoints commonly omit a filename. Only probe ambiguous URLs;
+        // known media files and HLS manifests go directly to their decoder.
+        var extension = Path.GetExtension(source.AbsolutePath).ToLowerInvariant();
+        if ((OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && source.Scheme is "http" or "https" &&
+            extension is "" or ".php" or ".ashx" or ".cgi" or ".aspx")
+        {
+            Pause();
+            using var cancel = new CancellationTokenSource();
+            _probe = cancel;
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Head, source);
+                using var response = await RadioHeaders.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancel.Token);
+                string? mime = response.Content.Headers.ContentType?.MediaType;
+                audioHint = response.IsSuccessStatusCode && mime?.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) == true &&
+                    !mime.Contains("mpegurl", StringComparison.OrdinalIgnoreCase) && !mime.Equals("audio/x-scpls", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+            {
+                // Stations can reject HEAD. Let the native transport inspect the actual stream.
+            }
+            finally { if (ReferenceEquals(_probe, cancel)) _probe = null; }
+            if (_openGeneration != generation) return;
+        }
         _usingAudio = false;
         _hasVideo = false;
         _audio?.Clear();
         if (_element?.Source != null) _element.Source = null;
-        var extension = Path.GetExtension(source.AbsolutePath).ToLowerInvariant();
-        if (source.IsFile && extension is ".mp3" or ".wav" or ".flac")
+        bool localPcm = source.IsFile && extension is ".mp3" or ".wav" or ".flac";
+        bool audioOnly = audioHint || extension is ".mp3" or ".mp2" or ".flac" or ".wav" or ".m4a" or ".aac" or ".oga" or ".ogg" or ".opus" or ".aiff" or ".wma";
+        bool vlcPcm = audioOnly && (OperatingSystem.IsWindows() || OperatingSystem.IsLinux());
+        if (localPcm || vlcPcm)
         {
             try
             {
@@ -75,8 +105,11 @@ public sealed partial class PlayerEngine
                 {
                     _audio = new DesktopAudio();
                     _audio.Ended += OnAudioEnded;
+                    _audio.StateChanged += OnAudioState;
+                    _audio.Failed += OnAudioFailed;
                 }
-                _audio.Open(source.LocalPath);
+                if (localPcm) _audio.Open(source.LocalPath);
+                else _audio.OpenVlc(source);
                 _audio.Signal.Equalize(_gains);
                 _audio.Signal.Balance(_balance);
                 _audio.Signal.Volume(_volume);
@@ -84,22 +117,19 @@ public sealed partial class PlayerEngine
                 RaiseStateChanged();
                 return;
             }
-            catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or DllNotFoundException or BadImageFormatException)
+            catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or DllNotFoundException or BadImageFormatException or LibVLCSharp.Shared.VLCException)
             {
                 // A different system codec or device may still decode the source.
                 System.Diagnostics.Trace.TraceWarning("PCM output unavailable: {0}", ex.Message);
             }
         }
         EnsureMediaElement();
-        _hasVideo = extension is not (".mp3" or ".mp2" or ".flac" or ".wav" or ".m4a" or ".aac" or ".oga" or ".ogg" or ".opus" or ".aiff" or ".wma");
+        _hasVideo = !audioOnly;
         _element!.Source = MediaSource.CreateFromUri(source);
     }
 
-    private Task OpenFileAsync(StorageFile file, int generation)
-    {
-        OpenUri(new Uri(Path.GetFullPath(file.Path)));
-        return Task.CompletedTask;
-    }
+    private Task OpenFileAsync(StorageFile file, int generation) =>
+        OpenUriAsync(new Uri(Path.GetFullPath(file.Path)), generation);
 
     public static Task<IReadOnlyList<BrowserMediaFile>> PickBrowserFilesAsync() =>
         throw new PlatformNotSupportedException("Use a StorageFile picker on desktop.");
@@ -139,6 +169,9 @@ public sealed partial class PlayerEngine
         Dispatch(() => { if (_usingAudio && generation == _openGeneration) RaiseEnded(); });
     }
 
+    private void OnAudioState(object? sender, EventArgs args) => Dispatch(() => { if (_usingAudio) RaiseStateChanged(); });
+    private void OnAudioFailed(object? sender, EventArgs args) => Dispatch(() => { if (_usingAudio) RaiseFailed("Could not open the audio stream."); });
+
     private void OnOpened(MediaPlayer sender, object args) => Dispatch(() => { if (!_usingAudio) RaiseStateChanged(); });
     private void OnEnded(MediaPlayer sender, object args) => Dispatch(() => { if (!_usingAudio) RaiseEnded(); });
     private void OnFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args) => Dispatch(() => { if (!_usingAudio) RaiseFailed(args.ErrorMessage); });
@@ -151,9 +184,12 @@ public sealed partial class PlayerEngine
 
     private void DisposeTransport()
     {
+        _probe?.Cancel();
         if (_audio != null)
         {
             _audio.Ended -= OnAudioEnded;
+            _audio.StateChanged -= OnAudioState;
+            _audio.Failed -= OnAudioFailed;
             _audio.Dispose();
         }
         if (_player != null)

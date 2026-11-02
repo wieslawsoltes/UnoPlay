@@ -2,6 +2,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
+const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 const { chromium } = require("playwright");
 
@@ -37,6 +38,8 @@ const server = http.createServer((req, res) => {
         browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ["--disable-dev-shm-usage"] });
         const page = await browser.newPage({ viewport: { width: 1060, height: 820 } });
         const errors = [];
+        // Exercise the HTML file chooser used by browsers without the File System Access API.
+        await page.addInitScript(() => { delete window.showOpenFilePicker; });
         page.on("pageerror", e => errors.push(e.message));
         const url = process.env.UNOPLAY_URL || `http://127.0.0.1:${server.address().port}/UnoPlay/`;
         const ready = () => page.waitForFunction(() => {
@@ -58,6 +61,12 @@ const server = http.createServer((req, res) => {
             const v = document.querySelector("video");
             return v && !v.paused && v.currentTime > .15 && v.currentSrc.endsWith("/UnoPlay/media/first-light.mp3");
         });
+        if (process.env.UNOPLAY_SCREENSHOT) {
+            await page.waitForFunction(() => document.querySelector("video").currentTime > 1.5 &&
+                [...document.querySelectorAll("img.uno-htmlimage")].every(i => !i.src || i.complete));
+            await page.mouse.move(8, 8);
+            await page.screenshot({path: process.env.UNOPLAY_SCREENSHOT});
+        }
         console.log("First frame and playback passed");
         await clickMain(70, 96);
         await page.waitForFunction(() => document.querySelector("video")?.paused);
@@ -80,9 +89,29 @@ const server = http.createServer((req, res) => {
             return Math.abs(panel.clientHeight - 14 * panel.clientWidth / 275) < 1;
         });
         await clickMain(258, 7);
+        const fixture = execFileSync("python3", [path.join(__dirname, "skin_fixture.py")]);
+        const options = page.getByRole("button", {name: "Options", exact: true});
+        await options.click();
+        const choice = page.waitForEvent("filechooser");
+        await page.getByText(/Load classic skin/).first().click();
+        await (await choice).setFiles({name: "Test.wsz", mimeType: "application/zip", buffer: fixture});
+        const skinVisible = () => page.waitForFunction(() => {
+            const sprite = document.querySelector('[xamltype="UnoPlay.ClassicUI.ClassicSurface"] img');
+            if (!sprite || sprite.naturalWidth !== 275) return false;
+            const canvas = document.createElement("canvas");
+            canvas.width = canvas.height = 1;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(sprite, 0, 0);
+            const [r,g,b] = ctx.getImageData(0,0,1,1).data;
+            return r === 0xdd && g === 0x88 && b === 0x3a;
+        });
+        await skinVisible();
+        await page.waitForFunction(async expected => (await globalThis.UnoPlayStorage.load()).length === expected, fixture.length);
+        await page.reload();
+        await ready();
+        await skinVisible();
         assert.deepEqual(errors, []);
-        if (process.env.UNOPLAY_SCREENSHOT) await page.screenshot({path: process.env.UNOPLAY_SCREENSHOT});
-        console.log("Published app passed cold startup, MP3 playback, pause, seek, panel toggles, saved settings and windowshade.");
+        console.log("Published app passed cold startup, MP3 playback, pause, seek, panel toggles, saved settings, windowshade, skin upload, pixel color and restored skin.");
     } finally {
         await browser?.close();
         await new Promise(resolve => server.close(resolve));

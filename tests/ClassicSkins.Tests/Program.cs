@@ -122,8 +122,30 @@ foreach (string file in args)
         Console.WriteLine($"{Path.GetFileName(file)}: {importedBank.Count} presets, names and faders match.");
         continue;
     }
+    if (Path.GetExtension(file).Equals(".cur", StringComparison.OrdinalIgnoreCase))
+    {
+        var parsed = SkinCursor.Decode(File.ReadAllBytes(file));
+        Check(parsed.Steps.Count > 0 && parsed.Frames.Count > 0, "External cursor");
+        Console.WriteLine($"{Path.GetFileName(file)}: {parsed.Steps.Count} cursor steps.");
+        continue;
+    }
     using var stream = File.OpenRead(file);
     var imported = ClassicSkin.Load(stream);
+    foreach (var name in imported.CursorNames) SkinCursor.Decode(imported.GetCursor(name));
     Console.WriteLine($"{Path.GetFileName(file)}: {imported.BitmapNames.Count()} sheets, " +
         $"{imported.GetRegion("Normal").Count} main-window polygons, {imported.CursorNames.Count()} cursors");
 }
+
+var analyzer = new ClassicAnalyzer(4, 16);
+var colors = Enumerable.Range(0, 24).Select(i => 0xff000000u | (uint)i).ToArray();
+var pixels = new byte[4 * 16 * 4];
+analyzer.Render(pixels, colors, new byte[] { 255, 128, 64, 0 }, true, 1,
+    SpectrumStyle.Normal, ScopeStyle.Lines, true, true, 1.8);
+Check(pixels[0] == 23 && pixels[(15 * 4) * 4] == 17, "Full-scale analyzer peak and bottom palette colors");
+analyzer.Render(pixels, colors, new byte[] { 0, 0, 0, 0 }, true, 1.1,
+    SpectrumStyle.Normal, ScopeStyle.Lines, true, true, 1.8);
+Check(pixels[0] == 23, "Analyzer peak hold");
+analyzer.Render(pixels, colors, new byte[] { 128, 128, 128, 128 }, false, 1.2,
+    SpectrumStyle.Normal, ScopeStyle.Dots, true, false, 1.8);
+Check(pixels[(7 * 4) * 4] >= 18 && pixels[0] == 0, "Oscilloscope center line and background");
+Console.WriteLine("Visualizer palette, peaks and waveform passed.");

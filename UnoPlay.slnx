@@ -8,6 +8,7 @@
     <Project Path="src/UnoPlay.Metadata/UnoPlay.Metadata.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Win32Cursors.Tests/Win32Cursors.Tests.csproj" />
     <Project Path="tests/Core.Tests/Core.Tests.csproj" />
     <Project Path="tests/Metadata.Tests/Metadata.Tests.csproj" />
     <Project Path="tests/ClassicSkins.Tests/ClassicSkins.Tests.csproj" />

@@ -99,6 +99,8 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         var atlas = new SpriteAtlas(skin);
         foreach (var panel in _panels) panel.Atlas = atlas;
         if (_videoFrame is not null) _videoFrame.Atlas = atlas;
+        _libraryWindow?.SetSkin(skin);
+        _browserWindow?.SetSkin(skin);
         RefreshLayout();
     }
 
@@ -146,6 +148,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         }
         ArrangeWorkspace(reset: !_windowMoved);
         DrawAll();
+        QueuePreferencesSave();
     }
 
     private void ArrangeWorkspace(bool reset)
@@ -188,6 +191,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
 
     private void Activate(PanelId id)
     {
+        ReleaseToolFocus();
         if (_videoFocus) { SetVideoFocus(false); ArrangeVideo(); }
         if (_active == id) return;
         _active = id;
@@ -256,6 +260,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
                 _selectedDuration = SumDuration(_selected);
             }
             Draw(PanelId.Playlist);
+            RefreshLibrary();
         });
     }
 }

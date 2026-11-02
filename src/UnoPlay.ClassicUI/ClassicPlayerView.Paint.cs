@@ -7,7 +7,7 @@ public sealed partial class ClassicPlayerView
 {
     private void DrawMain(ClassicSurface p)
     {
-        bool shade = _shaded[0], active = !_videoFocus && _active == PanelId.Main;
+        bool shade = _shaded[0], active = !_videoFocus && !_auxActive && _active == PanelId.Main;
         if (!shade) p.Sprite("main", 0, 0, 275, 116, 0, 0);
         p.Sprite("titlebar", 27, shade ? (active ? 29 : 42) : (active ? 0 : 15), 275, 14, 0, 0);
         p.Sprite("titlebar", 0, Down("Options") ? 9 : 0, 9, 9, 6, 3);
@@ -18,6 +18,7 @@ public sealed partial class ClassicPlayerView
         var clock = TimeDisplay;
         if (shade)
         {
+            DrawAnalyzer(p, true);
             p.Text((_remaining ? "-" : "") + Clock(clock), 127, 4, 7);
             p.Sprite("titlebar", 0, 36, 17, 7, 226, 4);
             p.Sprite("titlebar", fraction < .34 ? 17 : fraction > .66 ? 23 : 20, 36, 3, 7, 226 + (int)Math.Round(fraction * 14), 4);
@@ -40,8 +41,8 @@ public sealed partial class ClassicPlayerView
         }
         p.Text(title, 111, 27, 30, start);
         var tags = CurrentTags;
-        if (tags is { KilobitsPerSecond: > 0 }) p.Text(tags.KilobitsPerSecond.ToString().PadLeft(3), 111, 43, 3);
-        if (tags is { SampleRate: > 0 }) p.Text(((int)Math.Round(tags.SampleRate / 1000d)).ToString().PadLeft(2), 156, 43, 2);
+        p.Text(tags is { KilobitsPerSecond: > 0 } ? tags.KilobitsPerSecond.ToString().PadLeft(3) : "", 111, 43, 3);
+        p.Text(tags is { SampleRate: > 0 } ? ((int)Math.Round(tags.SampleRate / 1000d)).ToString().PadLeft(2) : "", 156, 43, 2);
         p.Sprite("monoster", 29, tags?.Channels == 1 ? 0 : 12, 27, 12, 212, 41);
         p.Sprite("monoster", 0, tags?.Channels >= 2 ? 0 : 12, 29, 12, 239, 41);
         var volume = Math.Clamp(Engine.Volume, 0, 1);
@@ -55,6 +56,7 @@ public sealed partial class ClassicPlayerView
         p.Sprite("posbar", 0, 0, 248, 10, 16, 72);
         if (!_stopped && Engine.CanSeek)
             p.Sprite("posbar", Down("Seek") ? 278 : 248, 0, 29, 10, 16 + (int)Math.Round(fraction * 219), 72);
+        else p.Picture(null, 16, 72, 29, 10);
         for (int i = 0; i < 5; i++)
             p.Sprite("cbuttons", i * 23, Down(TransportNames[i]) ? 18 : 0, i == 4 ? 22 : 23, 18, 16 + i * 23, 88);
         p.Sprite("cbuttons", 114, Down("Open files") ? 16 : 0, 22, 16, 136, 89);
@@ -65,42 +67,28 @@ public sealed partial class ClassicPlayerView
 
     private static void Digit(ClassicSurface p, int digit, int x) => p.Sprite("nums_ex", digit * 9, 0, 9, 13, x, 26);
 
-    private static void Put(byte[] dest, int i, uint argb)
-    {
-        dest[i] = (byte)argb; dest[i + 1] = (byte)(argb >> 8);
-        dest[i + 2] = (byte)(argb >> 16); dest[i + 3] = (byte)(argb >> 24);
-    }
-
     private static void Upload(WriteableBitmap image, byte[] bytes)
     {
         using (var stream = image.PixelBuffer.AsStream()) stream.Write(bytes);
         image.Invalidate();
     }
 
-    private void DrawAnalyzer(ClassicSurface p)
+    private readonly byte[] _miniVisPixels = new byte[38 * 5 * 4];
+    private WriteableBitmap? _miniVisImage;
+    private void DrawAnalyzer(ClassicSurface p, bool mini = false)
     {
         if (_visMode == 0) return;
         var colors = _skin.VisualizationColors;
         if (colors.Count < 24) return;
+        int width = mini ? 38 : 76, height = mini ? 5 : 16;
+        var buffer = mini ? _miniVisPixels : _visPixels;
         var bins = Engine.IsPlaying && Engine.SupportsDsp ? (_visMode == 1 ? Engine.GetSpectrum() : Engine.GetWaveform()) : [];
-        int lastHeight = 8;
-        for (int x = 0; x < 76; x++)
-        {
-            int band = _visMode == 1 ? x / 4 * 4 : x;
-            int bin = bins.Length == 0 ? 0 : bins[Math.Min(bins.Length - 1, band * bins.Length / 76)];
-            int level = (bin * 16 + 127) / 255;
-            for (int y = 0; y < 16; y++)
-            {
-                int color = (x & 1) == (y & 1) ? 0 : 1;
-                if (_visMode == 1 && x % 4 != 3 && 15 - y < level) color = 2 + y;
-                if (_visMode == 2 && bins.Length > 0 && 15 - y >= Math.Min(level, lastHeight) && 15 - y <= Math.Max(level, lastHeight)) color = 18 + y / 4;
-                Put(_visPixels, (y * 76 + x) * 4, colors[color]);
-            }
-            lastHeight = level;
-        }
-        _visImage ??= new(76, 16);
-        Upload(_visImage, _visPixels);
-        p.Picture(_visImage, 24, 43, 76, 16);
+        (mini ? _miniSpectrum : _spectrum).Render(buffer, colors, bins, _visMode == 1,
+            System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency,
+            _spectrumStyle, _scopeStyle, _thinBars, _drawPeaks, _falloff);
+        var image = mini ? (_miniVisImage ??= new(width,height)) : (_visImage ??= new(width,height));
+        Upload(image,buffer);
+        p.Picture(image,mini ? 79 : 24, mini ? 5 : 43, width,height);
     }
 
     private readonly static string[] TransportNames = ["Previous", "Play", "Pause", "Stop", "Next"];
@@ -110,7 +98,7 @@ public sealed partial class ClassicPlayerView
 
     private void DrawEq(ClassicSurface p)
     {
-        bool active = !_videoFocus && _active == PanelId.Equalizer;
+        bool active = !_videoFocus && !_auxActive && _active == PanelId.Equalizer;
         if (_shaded[1])
         {
             p.Sprite("eq_ex", 0, active ? 0 : 15, 275, 14, 0, 0);
@@ -164,7 +152,7 @@ public sealed partial class ClassicPlayerView
     private void DrawPlaylist(ClassicSurface p)
     {
         int w = _playlistWidth, h = _playlistHeight;
-        bool active = !_videoFocus && _active == PanelId.Playlist;
+        bool active = !_videoFocus && !_auxActive && _active == PanelId.Playlist;
         if (_shaded[2])
         {
             for (int x = 0; x < w; x += 25) p.Sprite("pledit", 72, 57, Math.Min(25, w - x), 14, x, 0);

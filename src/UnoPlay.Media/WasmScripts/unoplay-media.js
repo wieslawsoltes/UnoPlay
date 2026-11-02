@@ -320,7 +320,7 @@
                 input.multiple = true;
                 input.accept = "audio/*,video/*,.mp3,.mp4,.m4a,.aac,.flac,.mkv,.wav,.webm,.ogg,.opus,.mov";
                 input.addEventListener("change", () => resolve(JSON.stringify(Array.from(input.files, f =>
-                    [f.name, URL.createObjectURL(f)]))), {once: true});
+                    [f.name, URL.createObjectURL(f), f.size, f.lastModified]))), {once: true});
                 input.addEventListener("cancel", () => resolve("[]"), {once: true});
                 try { if (input.showPicker) input.showPicker(); else input.click(); }
                 catch (error) { reject(error); }

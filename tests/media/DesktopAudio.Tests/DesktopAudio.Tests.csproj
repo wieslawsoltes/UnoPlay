@@ -2,9 +2,12 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SoundFlow" Version="1.4.2" />
+    <PackageReference Include="LibVLCSharp" Version="3.9.7.1" />
+    <Compile Include="../../../src/UnoPlay.Media/VlcAudioTrack.cs" Link="VlcAudioTrack.cs" />
     <Compile Include="../../../src/UnoPlay.Media/ClassicSignal.cs" Link="ClassicSignal.cs" />
     <Compile Include="../../../src/UnoPlay.Media/DesktopAudio.cs" Link="DesktopAudio.cs" />
   </ItemGroup>

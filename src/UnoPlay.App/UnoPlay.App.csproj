@@ -14,7 +14,7 @@
     <Description>A skinnable classic media player.</Description>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">
-    <UnoFeatures>MediaPlayerElement</UnoFeatures>
+    <UnoFeatures>MediaPlayerElement;WebView</UnoFeatures>
     <!-- VideoLAN defaults AnyCPU to all three Windows plugin directories. -->
     <_VlcRuntime>$(RuntimeIdentifier)</_VlcRuntime>
     <_VlcRuntime Condition="'$(_VlcRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_VlcRuntime>
