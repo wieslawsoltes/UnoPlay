@@ -30,7 +30,7 @@ public sealed partial class ClassicPlayerView
         Digit(p, minutes / 10, 48); Digit(p, minutes % 10, 60);
         Digit(p, clock.Seconds / 10, 78); Digit(p, clock.Seconds % 10, 90);
         if (_notice is not null && DateTime.UtcNow > _noticeUntil) _notice = null;
-        var title = _notice ?? _loaded?.Title ?? "UNOPLAY CLASSIC";
+        var title = _notice ?? (_loaded is not null ? TitleOf(_loaded) : "UNOPLAY CLASSIC");
         int start = 0;
         if (title.Length > 30)
         {
@@ -39,8 +39,11 @@ public sealed partial class ClassicPlayerView
             title = loop + loop;
         }
         p.Text(title, 111, 27, 30, start);
-        p.Sprite("monoster", 29, 12, 27, 12, 212, 41);
-        p.Sprite("monoster", 0, 12, 29, 12, 239, 41);
+        var tags = CurrentTags;
+        if (tags is { KilobitsPerSecond: > 0 }) p.Text(tags.KilobitsPerSecond.ToString().PadLeft(3), 111, 43, 3);
+        if (tags is { SampleRate: > 0 }) p.Text(((int)Math.Round(tags.SampleRate / 1000d)).ToString().PadLeft(2), 156, 43, 2);
+        p.Sprite("monoster", 29, tags?.Channels == 1 ? 0 : 12, 27, 12, 212, 41);
+        p.Sprite("monoster", 0, tags?.Channels >= 2 ? 0 : 12, 29, 12, 239, 41);
         var volume = Math.Clamp(Engine.Volume, 0, 1);
         var balance = Math.Clamp(Engine.Balance, -1, 1);
         p.Sprite("volume", 0, 15 * Math.Clamp((int)Math.Round(28 * volume) - 1, 0, 27), 68, 13, 107, 57);
@@ -167,7 +170,7 @@ public sealed partial class ClassicPlayerView
             for (int x = 0; x < w; x += 25) p.Sprite("pledit", 72, 57, Math.Min(25, w - x), 14, x, 0);
             p.Sprite("pledit", 72, 42, 25, 14, 0, 0);
             p.Sprite("pledit", 99, active ? 42 : 57, 50, 14, w - 50, 0);
-            p.Text(_loaded?.Title ?? "PLAYLIST", 5, 4, (w - 75) / 5);
+            p.Text(_loaded is not null ? TitleOf(_loaded) : "PLAYLIST", 5, 4, (w - 75) / 5);
             p.Text(Clock(Engine.Position), w - 62, 4, 6);
             return;
         }
@@ -194,7 +197,7 @@ public sealed partial class ClassicPlayerView
             var y = 22 + row * 13;
             if (_selected.Contains(track)) p.Fill(palette.SelectedBG, 12, y, w - 32, 13);
             uint color = ReferenceEquals(track, _loaded) ? palette.Current : palette.Normal;
-            p.Label($"{index + 1}. {track.Title}", palette.Font, color, 14, y, w - 75, 13);
+            p.Label($"{index + 1}. {TitleOf(track)}", palette.Font, color, 14, y, w - 75, 13);
             var duration = track.Duration ?? (_knownDurations.TryGetValue(track, out var known) ? known : (TimeSpan?)null);
             if (duration.HasValue) p.Label(Clock(duration.Value), palette.Font, color, w - 56, y, 34, 13);
         }

@@ -1,6 +1,6 @@
 using Uno.UI.Hosting;
 
-namespace UnoPlay;
+namespace UnoPlay.ApplicationHost;
 
 internal static class Program
 {

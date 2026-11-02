@@ -7,9 +7,17 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
+    <DefineConstants>$(DefineConstants);UNOPLAY_BROWSER</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
+    <EmbeddedResource Include="WasmScripts/unoplay-cursors.js" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../UnoPlay.ClassicSkins/UnoPlay.ClassicSkins.csproj" />
     <ProjectReference Include="../UnoPlay.Media/UnoPlay.Media.csproj" />
+    <ProjectReference Include="../UnoPlay.Metadata/UnoPlay.Metadata.csproj" />
     <ProjectReference Include="../UnoPlay.Core/UnoPlay.Core.csproj" />
   </ItemGroup>
 </Project>

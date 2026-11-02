@@ -45,6 +45,7 @@ public sealed partial class ClassicPlayerView
         _preamp = preset.Preamp;
         _eq = Engine.SupportsDsp;
         ApplyEq();
+        QueuePreferencesSave();
         Notify(preset.Name.ToUpperInvariant());
     }
 

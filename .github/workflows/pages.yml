@@ -22,6 +22,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Verify portable libraries
+        run: |
+          dotnet run -c Release --project tests/Core.Tests
+          dotnet run -c Release --project tests/ClassicSkins.Tests
+          dotnet run -c Release --project tests/Metadata.Tests -- src/UnoPlay.App/Assets/Media/first-light.mp3
       - run: dotnet publish src/UnoPlay.App -c Release -f net10.0-browserwasm -p:UnoPlayTarget=net10.0-browserwasm -o "${{ runner.temp }}/browser"
       - name: Locate static site
         id: site

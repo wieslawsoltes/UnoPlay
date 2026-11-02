@@ -2,7 +2,7 @@ using Microsoft.UI.Xaml;
 using UnoPlay.ClassicUI;
 using UnoPlay.Core;
 
-namespace UnoPlay;
+namespace UnoPlay.ApplicationHost;
 
 public sealed partial class App : Application
 {
@@ -31,5 +31,6 @@ public sealed partial class App : Application
         player.Queue.Tracks.Add(new Track(demo.AbsoluteUri, "UnoPlay – First Light", TimeSpan.FromSeconds(16 * 60.0 / 110)));
         window.Closed += (_, _) => player.Shutdown();
         window.Activate();
+        _ = player.RestorePreferencesAsync();
     }
 }

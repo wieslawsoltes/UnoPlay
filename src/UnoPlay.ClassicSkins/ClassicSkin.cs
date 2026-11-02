@@ -31,6 +31,7 @@ public sealed class ClassicSkin
     public PlaylistStyle Playlist { get; private set; } = PlaylistStyle.Default;
     public IReadOnlyList<uint> VisualizationColors { get; private set; } = Array.AsReadOnly(SkinSettings.DefaultColors);
     public IEnumerable<string> BitmapNames => bitmaps.Keys;
+    public bool HasCursors => cursors.Count > 0;
     public IEnumerable<string> CursorNames => cursors.Keys;
 
     public SkinBitmap? GetBitmap(string sheet)

@@ -1,0 +1,41 @@
+name: Desktop packages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, rid: linux-x64 }
+          - { os: windows-latest, rid: win-x64 }
+          - { os: macos-15, rid: osx-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish self-contained desktop application
+        run: dotnet publish src/UnoPlay.App -c Release -f net10.0-desktop -p:UnoPlayTarget=net10.0-desktop -r ${{ matrix.rid }} --self-contained -o dist/UnoPlay
+      - name: Package with executable permissions
+        if: runner.os != 'Windows'
+        run: tar -C dist -czf UnoPlay-${{ matrix.rid }}.tar.gz UnoPlay
+      - name: Package Windows binaries
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist/UnoPlay -DestinationPath UnoPlay-win-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UnoPlay-${{ matrix.rid }}
+          path: UnoPlay-${{ matrix.rid }}.*
+          if-no-files-found: error

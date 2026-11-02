@@ -2,6 +2,7 @@
   <PropertyGroup>
     <TargetFrameworks>net10.0-desktop;net10.0-browserwasm</TargetFrameworks>
     <OutputType>Exe</OutputType>
+    <RootNamespace>UnoPlay.ApplicationHost</RootNamespace>
     <UnoSingleProject>true</UnoSingleProject>
     <ApplicationTitle>UnoPlay</ApplicationTitle>
     <ApplicationId>com.unoplay.player</ApplicationId>
@@ -13,13 +14,19 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-desktop'">
     <UnoFeatures>MediaPlayerElement</UnoFeatures>
+    <!-- VideoLAN defaults AnyCPU to all three Windows plugin directories. -->
+    <_VlcRuntime>$(RuntimeIdentifier)</_VlcRuntime>
+    <_VlcRuntime Condition="'$(_VlcRuntime)' == ''">$(NETCoreSdkRuntimeIdentifier)</_VlcRuntime>
+    <VlcWindowsX64Enabled>$([System.String]::Equals('$(_VlcRuntime)', 'win-x64'))</VlcWindowsX64Enabled>
+    <VlcWindowsX86Enabled>$([System.String]::Equals('$(_VlcRuntime)', 'win-x86'))</VlcWindowsX86Enabled>
+    <VlcWindowsArm64Enabled>$([System.String]::Equals('$(_VlcRuntime)', 'win-arm64'))</VlcWindowsArm64Enabled>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-browserwasm'">
     <Content Include="../UnoPlay.Media/BrowserVendor/*" Link="media/%(Filename)%(Extension)" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <UnoIcon Include="Assets/player.svg" />
-    <UnoSplashScreen Include="Assets/player.svg" Color="#151922" BaseSize="72,72" />
+    <UnoSplashScreen Include="Assets/launch.svg" Color="#151922" BaseSize="72,72" />
     <Content Include="Assets/Media/first-light.mp3" Link="media/first-light.mp3" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../UnoPlay.ClassicUI/UnoPlay.ClassicUI.csproj" />
   </ItemGroup>

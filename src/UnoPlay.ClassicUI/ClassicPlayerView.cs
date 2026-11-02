@@ -57,6 +57,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         RequestedTheme = ElementTheme.Dark;
         var atlas = new SpriteAtlas(_skin);
         _panels = [new(atlas, "Main player"), new(atlas, "Graphic equalizer"), new(atlas, "Playlist editor")];
+        InitializeCursors();
         _video.Child = engine.View;
         _desk.Children.Add(_video);
         foreach (var panel in _panels) _desk.Children.Add(panel);
@@ -92,6 +93,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     {
         ArgumentNullException.ThrowIfNull(skin);
         _skin = skin;
+        ResetCursors();
         var atlas = new SpriteAtlas(skin);
         foreach (var panel in _panels) panel.Atlas = atlas;
         RefreshLayout();
@@ -102,7 +104,11 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     public void Shutdown()
     {
         if (_disposed) return;
+        SavePreferences();
+        _preferencesTimer?.Stop();
         _disposed = true;
+        ResetCursors();
+        CancelProbe();
         _timer.Stop();
         Queue.Tracks.CollectionChanged -= TracksChanged;
         Engine.StateChanged -= EngineStateChanged;

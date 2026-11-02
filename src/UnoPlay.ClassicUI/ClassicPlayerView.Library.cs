@@ -33,7 +33,7 @@ public sealed partial class ClassicPlayerView
         void Add(string name, Action action)
         {
             var item = new MenuFlyoutItem { Text = name };
-            item.Click += (_, _) => action();
+            item.Click += (_, _) => { action(); QueuePreferencesSave(); };
             menu.Items.Add(item);
         }
         void Async(string name, Func<Task> action) => Add(name, () => _ = Guard(action));
@@ -57,7 +57,7 @@ public sealed partial class ClassicPlayerView
             default:
                 Async("Open files…    L", () => PickMedia(true)); Async("Open URL…    Ctrl+L", OpenUrl);
                 Async("Open playlist…", PickPlaylist); Async("Save playlist…", SavePlaylist); Sep();
-                Async("Load classic skin (.wsz)…", PickSkin); Add("Use built-in skin", () => ApplySkin(ClassicSkin.Default)); Sep();
+                Async("Load classic skin (.wsz)…", PickSkin); Async("Use built-in skin", async () => { ApplySkin(ClassicSkin.Default); await CacheSkinAsync(null); }); Sep();
                 Add(_visible[1] ? "Hide equalizer" : "Show equalizer", () => Toggle(PanelId.Equalizer));
                 Add(_visible[2] ? "Hide playlist" : "Show playlist", () => Toggle(PanelId.Playlist));
                 Add("Toggle video window", () => { _videoEnabled = !_videoEnabled; ArrangeVideo(); });
@@ -127,6 +127,7 @@ public sealed partial class ClassicPlayerView
         if (file is null) return;
         using var stream = await file.OpenStreamForReadAsync();
         ApplySkin(ClassicSkin.Load(stream));
+        await CacheSkinAsync(file);
         Notify(Path.GetFileNameWithoutExtension(file.Name));
     }
 
@@ -213,8 +214,8 @@ public sealed partial class ClassicPlayerView
     {
         var track = _selected.FirstOrDefault() ?? _loaded ?? Queue.Tracks.FirstOrDefault();
         return track is null ? ShowInfo("Track information", "The playlist is empty.")
-            : ShowInfo(track.Title, (track.Source is BrowserMediaFile file ? file.Name : track.Location)
-                + (ReferenceEquals(track, _loaded) ? $"\n\n{Clock(Engine.Position)} / {Clock(Engine.Duration)}" : ""));
+            : ShowInfo(TitleOf(track), (track.Source is BrowserMediaFile file ? file.Name : track.Location)
+                + (ReferenceEquals(track, _loaded) ? $"\n\n{Clock(Engine.Position)} / {Clock(Engine.Duration)}" : "") + TechnicalInfo(_tags.GetValueOrDefault(track)));
     }
     private Task About() => ShowInfo("UnoPlay Classic", "Open audio, video, or a stream from the title-bar menu. Load a classic .wsz skin to replace the player, equalizer and playlist artwork.\n\nZ / X / C / V / B   Previous, play, pause, stop, next\nL   Open files      Ctrl+L   Open location\nJ   Jump to track      R / S   Repeat / shuffle\n← / →   Seek 5 seconds      ↑ / ↓   Volume\n\nDouble-click a title bar to roll it up. Drag a title bar to dock windows. Drag the playlist’s lower-right grip to resize.");
     private async Task ClosePlayer()
@@ -273,7 +274,7 @@ public sealed partial class ClassicPlayerView
         if (_auto) RecallEq();
         EnsureVisible(IndexOf(track));
         await Engine.PlayAsync();
-        if (generation == _loadRequest) DrawAll();
+        if (generation == _loadRequest) { DrawAll(); _ = Probe(track); }
     }
 
     private int IndexOf(Track? track)
@@ -313,7 +314,7 @@ public sealed partial class ClassicPlayerView
     private TimeSpan SumDuration(IEnumerable<Track> tracks)
         => TimeSpan.FromSeconds(Math.Min(TimeSpan.MaxValue.TotalSeconds - 1, tracks.Sum(t => Math.Max(0, (t.Duration ?? _knownDurations.GetValueOrDefault(t)).TotalSeconds))));
     private void SelectAll() { _selected.UnionWith(Queue.Tracks); SelectionChanged(); }
-    private void ClearList() { _ = Stop(); _loaded = null; Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
+    private void ClearList() { _ = Stop(); _loaded = null; Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _tags.Clear(); CancelProbe(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
     private void ReleaseUnusedFiles()
     {
         var used = Queue.Tracks.Select(track => track.Source).OfType<BrowserMediaFile>().ToHashSet();
@@ -327,7 +328,7 @@ public sealed partial class ClassicPlayerView
             var track = Queue.Tracks[i];
             if (_selected.Contains(track) == crop) continue;
             if (ReferenceEquals(track, _loaded)) { _ = Stop(); _loaded = null; }
-            _knownDurations.Remove(track);
+            _knownDurations.Remove(track); _tags.Remove(track);
             Queue.RemoveAt(i);
         }
         ReleaseUnusedFiles(); SelectionChanged(); DrawAll();
