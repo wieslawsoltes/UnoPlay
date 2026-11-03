@@ -61,6 +61,7 @@ public sealed partial class ClassicPlayerView
                 Add(_visible[1] ? "Hide equalizer" : "Show equalizer", () => Toggle(PanelId.Equalizer));
                 Add(_visible[2] ? "Hide playlist" : "Show playlist", () => Toggle(PanelId.Playlist));
                 Add("Media library…    Alt+L",ShowLibrary);
+                Add("Spotify…    Alt+S", ShowSpotify);
                 Add("MiniBrowser…    Alt+B",ShowMiniBrowser);
                 Add("Toggle video window", () => { _videoEnabled = !_videoEnabled; ArrangeVideo(); });
                 Add("Toggle double size", Zoom);
@@ -277,12 +278,13 @@ public sealed partial class ClassicPlayerView
 
     private Task TrackInfo()
     {
+        if (_spotifyActive) { ShowSpotify(); return Task.CompletedTask; }
         var track = _selected.FirstOrDefault() ?? _loaded ?? Queue.Tracks.FirstOrDefault();
         return track is null ? ShowInfo("Track information", "The playlist is empty.")
             : ShowInfo(TitleOf(track), (track.Source is BrowserMediaFile file ? file.Name : track.Location)
                 + (ReferenceEquals(track, _loaded) ? $"\n\n{Clock(Engine.Position)} / {Clock(Engine.Duration)}" : "") + TechnicalInfo(_tags.GetValueOrDefault(track)));
     }
-    private Task About() => ShowInfo("UnoPlay Classic", "Open audio, video, or a stream from the title-bar menu. Load a classic .wsz skin to replace the player, equalizer and playlist artwork.\n\nZ / X / C / V / B   Previous, play, pause, stop, next\nL   Open files      Ctrl+L   Open location\nJ   Jump to track      R / S   Repeat / shuffle\n← / →   Seek 5 seconds      ↑ / ↓   Volume\n\nDouble-click a title bar to roll it up. Drag a title bar to dock windows. Drag the playlist’s lower-right grip to resize.");
+    private Task About() => ShowInfo("UnoPlay Classic", "Open audio, video, or a stream from the title-bar menu. Load a classic .wsz skin to replace the player, equalizer and playlist artwork.\n\nZ / X / C / V / B   Previous, play, pause, stop, next\nL   Open files      Ctrl+L   Open location\nAlt+S   Spotify library\nJ   Jump to track      R / S   Repeat / shuffle\n← / →   Seek 5 seconds      ↑ / ↓   Volume\n\nDouble-click a title bar to roll it up. Drag a title bar to dock windows. Drag the playlist’s lower-right grip to resize.");
     private async Task ClosePlayer()
     {
         if (CloseRequested is not null) { CloseRequested(this, EventArgs.Empty); return; }
@@ -298,20 +300,33 @@ public sealed partial class ClassicPlayerView
 
     private async Task Play()
     {
-        if (_loaded is not null && ReferenceEquals(_loaded, Queue.Current)) { _stopped = false; await Engine.PlayAsync(); }
+        if (_spotifyActive) { _stopped = false; await SpotifyCommandAsync(_spotify.ResumeAsync); return; }
+        if (_loaded is not null && ReferenceEquals(_loaded, Queue.Current))
+            await RunTransportChangeAsync(async _ => { _stopped = false; Engine.ReclaimMediaSession(); await Engine.PlayAsync(); });
         else if (Queue.Tracks.Count > 0) await PlayIndex(Math.Max(0, IndexOf(Queue.Current)));
         else await PickMedia(true);
         DrawAll();
     }
-    private Task Pause() { Engine.Pause(); DrawAll(); return Task.CompletedTask; }
-    private Task Stop() { _loadRequest++; Engine.Stop(); _stopped = true; DrawAll(); return Task.CompletedTask; }
+    private Task Pause() => _spotifyActive ? SpotifyCommandAsync(_spotify.PauseAsync) : RunTransportChangeAsync(_ =>
+    { Engine.Pause(); DrawAll(); return Task.CompletedTask; });
+    private Task Stop() => _spotifyActive ? SpotifyCommandAsync(StopSpotifyAsync) : RunTransportChangeAsync(_ =>
+    { Engine.Stop(); _stopped = true; DrawAll(); return Task.CompletedTask; });
+
+    private void StopLocalPlayback()
+    {
+        if (!_spotifyActive) { _loadRequest++; _stopped = true; }
+        Engine.Stop();
+        DrawAll();
+    }
     private async Task Advance(bool manual)
     {
+        if (_spotifyActive) { if (manual) await SpotifyCommandAsync(_spotify.NextAsync); return; }
         var next = Queue.Next(manual);
         if (next is null) await Stop(); else await Open(next);
     }
     private async Task Previous()
     {
+        if (_spotifyActive) { await SpotifyCommandAsync(_spotify.PreviousAsync); return; }
         if (Engine.Position.TotalSeconds > 3 && Engine.CanSeek) { Engine.Seek(TimeSpan.Zero); return; }
         var prev = Queue.Previous();
         if (prev is not null) await Open(prev);
@@ -322,9 +337,10 @@ public sealed partial class ClassicPlayerView
         var track = Queue.Select(index);
         if (track is not null) await Open(track);
     }
-    private async Task Open(Track track)
+    private Task Open(Track track) => RunTransportChangeAsync(async generation =>
     {
-        var generation = ++_loadRequest;
+        await UseLocalTransportAsync(generation);
+        if (_disposed || generation != _loadRequest) return;
         _loaded = track; _stopped = false;
         if (track.Source is StorageFile file) await Engine.OpenAsync(file);
         else if (Uri.TryCreate(track.Location, UriKind.Absolute, out var uri) &&
@@ -341,7 +357,7 @@ public sealed partial class ClassicPlayerView
         EnsureVisible(IndexOf(track));
         await Engine.PlayAsync();
         if (generation == _loadRequest) { DrawAll(); _ = Probe(track); }
-    }
+    });
 
     private int IndexOf(Track? track)
     {
@@ -380,7 +396,7 @@ public sealed partial class ClassicPlayerView
     private TimeSpan SumDuration(IEnumerable<Track> tracks)
         => TimeSpan.FromSeconds(Math.Min(TimeSpan.MaxValue.TotalSeconds - 1, tracks.Sum(t => Math.Max(0, (t.Duration ?? _knownDurations.GetValueOrDefault(t)).TotalSeconds))));
     private void SelectAll() { _selected.UnionWith(Queue.Tracks); SelectionChanged(); }
-    private void ClearList() { _ = Stop(); _loaded = null; UpdateMediaSession(); Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _tags.Clear(); CancelProbe(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
+    private void ClearList() { StopLocalPlayback(); _loaded = null; UpdateMediaSession(); Queue.Clear(); _selected.Clear(); _knownDurations.Clear(); _tags.Clear(); CancelProbe(); _selectionAnchor = -1; ReleaseUnusedFiles(); SelectionChanged(); DrawAll(); }
     private void ReleaseUnusedFiles()
     {
         var used = Queue.Tracks.Select(track => track.Source).OfType<BrowserMediaFile>().ToHashSet();
@@ -393,7 +409,7 @@ public sealed partial class ClassicPlayerView
         {
             var track = Queue.Tracks[i];
             if (_selected.Contains(track) == crop) continue;
-            if (ReferenceEquals(track, _loaded)) { _ = Stop(); _loaded = null; }
+            if (ReferenceEquals(track, _loaded)) { StopLocalPlayback(); _loaded = null; }
             _knownDurations.Remove(track); _tags.Remove(track);
             Queue.RemoveAt(i);
         }

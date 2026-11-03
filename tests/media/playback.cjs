@@ -88,8 +88,63 @@ function serve() {
         await page.evaluate(() => { UnoPlayMedia.pause(id); UnoPlayMedia.seek(id,1.5); });
         await page.waitForFunction(() => !UnoPlayMedia.state(id,"playing") && Math.abs(UnoPlayMedia.state(id,"position")-1.5) < .05);
         console.log("MP3 decode, FFT, ten-band EQ attenuation, pause and seek passed");
+        const handoff = await page.evaluate(() => {
+            const localHandlers = new Map(systemActions);
+            const localPosition = UnoPlayMedia.state(id,"position");
+            const commandCount = signals.filter(([kind]) => kind === "command").length;
+            UnoPlayMedia.mediaSession(id, false);
+            // These retained callbacks model actions queued before Spotify took over.
+            localHandlers.get("seekto")({action:"seekto",seekTime:2.8});
+            localHandlers.get("seekforward")({action:"seekforward",seekOffset:.5});
+            localHandlers.get("seekbackward")({action:"seekbackward",seekOffset:.25});
+            localHandlers.get("nexttrack")({action:"nexttrack"});
+            const staleActionsIgnored = UnoPlayMedia.state(id,"position") === localPosition &&
+                signals.filter(([kind]) => kind === "command").length === commandCount;
+
+            window.spotifySessionCalls = [];
+            const spotifyHandlers = new Map();
+            for (const action of localHandlers.keys()) {
+                const handler = details => spotifySessionCalls.push(details.action);
+                spotifyHandlers.set(action, handler);
+                navigator.mediaSession.setActionHandler(action, handler);
+            }
+            navigator.mediaSession.metadata = new MediaMetadata({title:"Spotify session fixture"});
+            navigator.mediaSession.playbackState = "playing";
+            UnoPlayMedia.mediaSession(id, false);
+            document.querySelector("video").dispatchEvent(new Event("seeked"));
+            systemActions.get("seekto")({action:"seekto",seekTime:2.2});
+            const spotifyHandlersPreserved = [...spotifyHandlers].every(([action, handler]) => systemActions.get(action) === handler);
+            const spotifyMetadataPreserved = navigator.mediaSession.metadata.title === "Spotify session fixture" &&
+                navigator.mediaSession.playbackState === "playing";
+
+            // Disposing a released local engine must preserve the current SDK session.
+            UnoPlayMedia.dispose(id);
+            const spotifyHandlersAfterDispose = [...spotifyHandlers].every(([action, handler]) => systemActions.get(action) === handler);
+            const spotifyMetadataAfterDispose = navigator.mediaSession.metadata.title === "Spotify session fixture";
+            UnoPlayMedia.create(id, (...args) => signals.push(args));
+            UnoPlayMedia.attach(document.getElementById(id));
+            UnoPlayMedia.metadata(id, "Test tone", "UnoPlay", "Transport checks");
+            UnoPlayMedia.mediaSession(id, true);
+            systemActions.get("nexttrack")({action:"nexttrack"});
+            return {staleActionsIgnored, spotifyHandlersPreserved, spotifyMetadataPreserved,
+                spotifyHandlersAfterDispose, spotifyMetadataAfterDispose,
+                localMetadataRestored:navigator.mediaSession.metadata.title === "Test tone",
+                localCommandRestored:signals.filter(([kind]) => kind === "command").length === commandCount + 1,
+                spotifyCalls:spotifySessionCalls};
+        });
+        assert.deepEqual(handoff, {staleActionsIgnored:true, spotifyHandlersPreserved:true, spotifyMetadataPreserved:true,
+            spotifyHandlersAfterDispose:true, spotifyMetadataAfterDispose:true, localMetadataRestored:true,
+            localCommandRestored:true, spotifyCalls:["seekto"]});
+        console.log("Local → Spotify → local Media Session handoff preserved active handlers and ignored stale seek actions");
         await page.evaluate(() => start("clip.mp4"));
         await page.waitForFunction(() => UnoPlayMedia.state(id,"video") === 96 && UnoPlayMedia.state(id,"videoHeight") === 64 && UnoPlayMedia.state(id,"duration") > 1);
+        await page.evaluate(() => {
+            UnoPlayMedia.pause(id);
+            systemActions.get("seekto")({action:"seekto",seekTime:.5});
+        });
+        await page.waitForFunction(() => !UnoPlayMedia.state(id,"playing") && Math.abs(UnoPlayMedia.state(id,"position")-.5) < .05);
+        assert.deepEqual(await page.evaluate(() => spotifySessionCalls), ["seekto"]);
+        await page.evaluate(() => UnoPlayMedia.play(id));
         await page.evaluate(() => UnoPlayMedia.toggleFullscreen(id));
         await page.waitForFunction(() => UnoPlayMedia.state(id,"fullscreen") === 1 && document.fullscreenElement?.controls);
         await page.evaluate(() => UnoPlayMedia.toggleFullscreen(id));

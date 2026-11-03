@@ -20,5 +20,6 @@
     <ProjectReference Include="../UnoPlay.Media/UnoPlay.Media.csproj" />
     <ProjectReference Include="../UnoPlay.Metadata/UnoPlay.Metadata.csproj" />
     <ProjectReference Include="../UnoPlay.Core/UnoPlay.Core.csproj" />
+    <ProjectReference Include="../UnoPlay.Spotify.Uno/UnoPlay.Spotify.Uno.csproj" />
   </ItemGroup>
 </Project>

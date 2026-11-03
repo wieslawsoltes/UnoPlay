@@ -69,6 +69,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         {
             if (_disposed) return;
             UpdateAnimationClock();
+            _ = InitializeSpotifyAsync();
             Focus(FocusState.Programmatic);
             ArrangeWorkspace(reset: !_windowMoved);
         };
@@ -79,7 +80,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
             _ticks++;
             if (_notice is not null && DateTime.UtcNow >= _noticeUntil) _notice = null;
             Draw(PanelId.Main);
-            if (_ticks % 6 == 0 && Engine.IsPlaying) Draw(PanelId.Playlist);
+            if (_ticks % 6 == 0 && CurrentIsPlaying) Draw(PanelId.Playlist);
             UpdateAnimationClock();
         };
         Queue.Tracks.CollectionChanged += TracksChanged;
@@ -100,6 +101,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         if (_videoFrame is not null) _videoFrame.Atlas = atlas;
         _libraryWindow?.SetSkin(skin);
         _browserWindow?.SetSkin(skin);
+        UpdateSpotifySkin();
         RefreshLayout();
     }
 
@@ -111,6 +113,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         SavePreferences();
         _preferencesTimer?.Stop();
         _disposed = true;
+        ShutdownSpotify();
         CloseBrowserHost();
         ResetCursors();
         CancelProbe();
@@ -217,8 +220,8 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     private void UpdateAnimationClock()
     {
         // A stopped or paused player with a static title has nothing to animate.
-        bool scrolling = !_stopped && !_shaded[0] && _loaded is not null && TitleOf(_loaded).Length > 30;
-        bool needed = !_disposed && IsLoaded && (_notice is not null || Engine.IsPlaying || scrolling);
+        bool scrolling = !_stopped && !_shaded[0] && CurrentTitle.Length > 30;
+        bool needed = !_disposed && IsLoaded && (_notice is not null || CurrentIsPlaying || scrolling);
         if (needed && !_timer.IsEnabled) _timer.Start();
         else if (!needed && _timer.IsEnabled) _timer.Stop();
     }
@@ -232,7 +235,7 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     }
 
     private static string Clock(TimeSpan t) => $"{(int)Math.Max(0,t.TotalMinutes)}:{Math.Max(0,t.Seconds):00}";
-    private TimeSpan TimeDisplay => _remaining && Engine.Duration > Engine.Position ? Engine.Duration - Engine.Position : _remaining ? TimeSpan.Zero : Engine.Position;
+    private TimeSpan TimeDisplay => _remaining && CurrentDuration > CurrentPosition ? CurrentDuration - CurrentPosition : _remaining ? TimeSpan.Zero : CurrentPosition;
     private bool Down(string id) => _pressed == id;
     private void OnUi(Action work)
     {
@@ -250,8 +253,8 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
         UpdateAnimationClock();
         ArrangeVideo(); DrawAll();
     });
-    private void EngineFailed(object? sender, string error) => OnUi(() => { _stopped = true; Notify(error); });
-    private void EngineEnded(object? sender, EventArgs e) => OnUi(() => _ = Guard(() => Advance(false)));
+    private void EngineFailed(object? sender, string error) => OnUi(() => { if (!_spotifyActive) { _stopped = true; Notify(error); } });
+    private void EngineEnded(object? sender, EventArgs e) => OnUi(() => { if (!_spotifyActive) _ = Guard(() => Advance(false)); });
     private bool _drawQueuePending;
     private void TracksChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {

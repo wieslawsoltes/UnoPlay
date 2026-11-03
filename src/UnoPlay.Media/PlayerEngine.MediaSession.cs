@@ -19,6 +19,22 @@ public sealed partial class PlayerEngine
 #endif
     }
 
+    /// <summary>Yields the browser media controls to another playback provider.</summary>
+    public void ReleaseMediaSession()
+    {
+#if UNOPLAY_BROWSER
+        BrowserNative.MediaSession(_id, false);
+#endif
+    }
+
+    /// <summary>Reinstalls local transport handlers after another playback provider has used them.</summary>
+    public void ReclaimMediaSession()
+    {
+#if UNOPLAY_BROWSER
+        BrowserNative.MediaSession(_id, true);
+#endif
+    }
+
     private async Task DispatchTransportAsync(MediaTransportCommand command)
     {
         try
@@ -36,5 +52,6 @@ public sealed partial class PlayerEngine
 internal static partial class BrowserNative
 {
     [JSImport(Api + "metadata")] internal static partial void Metadata(string id, string title, string artist, string album);
+    [JSImport(Api + "mediaSession")] internal static partial void MediaSession(string id, bool active);
 }
 #endif

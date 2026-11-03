@@ -14,7 +14,7 @@ public sealed partial class ClassicPlayerView
         p.Sprite("titlebar", 9, Down("Minimize") ? 9 : 0, 9, 9, 244, 3);
         p.Sprite("titlebar", Down("Shade main") ? 9 : 0, shade ? 27 : 18, 9, 9, 254, 3);
         p.Sprite("titlebar", 18, Down("Close") ? 9 : 0, 9, 9, 264, 3);
-        double fraction = Engine.Duration.TotalSeconds > 0 ? Math.Clamp(Engine.Position.TotalSeconds / Engine.Duration.TotalSeconds, 0, 1) : 0;
+        double fraction = CurrentDuration.TotalSeconds > 0 ? Math.Clamp(CurrentPosition.TotalSeconds / CurrentDuration.TotalSeconds, 0, 1) : 0;
         var clock = TimeDisplay;
         if (shade)
         {
@@ -25,12 +25,12 @@ public sealed partial class ClassicPlayerView
             return;
         }
         p.Sprite("titlebar", 304, 0, 8, 43, 10, 22);
-        p.Sprite("playpaus", _stopped ? 18 : Engine.IsPlaying ? 0 : 9, 0, 9, 9, 26, 28);
+        p.Sprite("playpaus", _stopped ? 18 : CurrentIsPlaying ? 0 : 9, 0, 9, 9, 26, 28);
         int minutes = (int)Math.Clamp(clock.TotalMinutes, 0, 99);
         p.Sprite("nums_ex", _remaining ? 99 : 90, 0, 9, 13, 36, 26);
         Digit(p, minutes / 10, 48); Digit(p, minutes % 10, 60);
         Digit(p, clock.Seconds / 10, 78); Digit(p, clock.Seconds % 10, 90);
-        var title = _notice ?? (_loaded is not null ? TitleOf(_loaded) : "UNOPLAY CLASSIC");
+        var title = _notice ?? CurrentTitle;
         int start = 0;
         if (title.Length > 30)
         {
@@ -39,13 +39,13 @@ public sealed partial class ClassicPlayerView
             title = loop + loop;
         }
         p.Text(title, 111, 27, 30, start);
-        var tags = CurrentTags;
+        var tags = _spotifyActive ? null : CurrentTags;
         p.Text(tags is { KilobitsPerSecond: > 0 } ? tags.KilobitsPerSecond.ToString().PadLeft(3) : "", 111, 43, 3);
         p.Text(tags is { SampleRate: > 0 } ? ((int)Math.Round(tags.SampleRate / 1000d)).ToString().PadLeft(2) : "", 156, 43, 2);
         p.Sprite("monoster", 29, tags?.Channels == 1 ? 0 : 12, 27, 12, 212, 41);
         p.Sprite("monoster", 0, tags?.Channels >= 2 ? 0 : 12, 29, 12, 239, 41);
-        var volume = Math.Clamp(Engine.Volume, 0, 1);
-        var balance = Math.Clamp(Engine.Balance, -1, 1);
+        var volume = Math.Clamp(CurrentVolume, 0, 1);
+        var balance = _spotifyActive ? 0 : Math.Clamp(Engine.Balance, -1, 1);
         p.Sprite("volume", 0, 15 * (int)(27 * volume), 68, 13, 107, 57);
         p.Sprite("volume", Down("Volume") ? 0 : 15, 422, 14, 11, 107 + (int)(volume * 51), 58);
         p.Sprite("balance", 9, 15 * (int)(27 * Math.Abs(balance)), 38, 13, 177, 57);
@@ -53,14 +53,14 @@ public sealed partial class ClassicPlayerView
         p.Sprite("shufrep", Down("Equalizer") ? 46 : 0, _visible[1] ? 73 : 61, 23, 12, 219, 58);
         p.Sprite("shufrep", Down("Playlist") ? 69 : 23, _visible[2] ? 73 : 61, 23, 12, 242, 58);
         p.Sprite("posbar", 0, 0, 248, 10, 16, 72);
-        if (!_stopped && Engine.CanSeek)
+        if (!_stopped && CurrentCanSeek)
             p.Sprite("posbar", Down("Seek") ? 278 : 248, 0, 29, 10, 16 + (int)Math.Round(fraction * 219), 72);
         else p.Picture(null, 16, 72, 29, 10);
         for (int i = 0; i < 5; i++)
             p.Sprite("cbuttons", i * 23, Down(TransportNames[i]) ? 18 : 0, i == 4 ? 22 : 23, 18, 16 + i * 23, 88);
         p.Sprite("cbuttons", 114, Down("Open files") ? 16 : 0, 22, 16, 136, 89);
-        p.Sprite("shufrep", 28, (Queue.Shuffle ? 30 : 0) + (Down("Shuffle") ? 15 : 0), 47, 15, 164, 89);
-        p.Sprite("shufrep", 0, (Queue.Repeat ? 30 : 0) + (Down("Repeat") ? 15 : 0), 28, 15, 210, 89);
+        p.Sprite("shufrep", 28, (CurrentShuffle ? 30 : 0) + (Down("Shuffle") ? 15 : 0), 47, 15, 164, 89);
+        p.Sprite("shufrep", 0, (CurrentRepeat ? 30 : 0) + (Down("Repeat") ? 15 : 0), 28, 15, 210, 89);
         DrawAnalyzer(p);
     }
 
@@ -81,7 +81,7 @@ public sealed partial class ClassicPlayerView
         if (colors.Count < 24) return;
         int width = mini ? 38 : 76, height = mini ? 5 : 16;
         var buffer = mini ? _miniVisPixels : _visPixels;
-        var bins = Engine.IsPlaying && Engine.SupportsDsp ? (_visMode == 1 ? Engine.GetSpectrum() : Engine.GetWaveform()) : [];
+        var bins = !_spotifyActive && CurrentIsPlaying && Engine.SupportsDsp ? (_visMode == 1 ? Engine.GetSpectrum() : Engine.GetWaveform()) : [];
         (mini ? _miniSpectrum : _spectrum).Render(buffer, colors, bins, _visMode == 1,
             System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency,
             _spectrumStyle, _scopeStyle, _thinBars, _drawPeaks, _falloff);
@@ -101,7 +101,7 @@ public sealed partial class ClassicPlayerView
         if (_shaded[1])
         {
             p.Sprite("eq_ex", 0, active ? 0 : 15, 275, 14, 0, 0);
-            double vol = Engine.Volume, bal = (Engine.Balance + 1) / 2;
+            double vol = CurrentVolume, bal = (Engine.Balance + 1) / 2;
             p.Sprite("eq_ex", vol < .34 ? 1 : vol > .66 ? 7 : 4, 30, 3, 7, 61 + (int)(vol * 94), 4);
             p.Sprite("eq_ex", bal < .34 ? 11 : bal > .66 ? 17 : 14, 30, 3, 7, 164 + (int)(bal * 40), 4);
             return;
@@ -158,7 +158,7 @@ public sealed partial class ClassicPlayerView
             p.Sprite("pledit", 72, 42, 25, 14, 0, 0);
             p.Sprite("pledit", 99, active ? 42 : 57, 50, 14, w - 50, 0);
             p.Text(_loaded is not null ? TitleOf(_loaded) : "PLAYLIST", 5, 4, (w - 75) / 5);
-            p.Text(Clock(Engine.Position), w - 62, 4, 6);
+            p.Text(Clock(CurrentPosition), w - 62, 4, 6);
             return;
         }
         int header = active ? 0 : 21;

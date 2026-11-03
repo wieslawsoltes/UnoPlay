@@ -46,8 +46,8 @@ public sealed partial class ClassicPlayerView
                 Button(id, TransportNames[i], 16 + i * 23, 88, i == 4 ? 22 : 23, 18, _ => Transport(action));
             }
             Button(id, "Open files", 136, 89, 22, 16, el => _ = Guard(() => PickMedia(true)));
-            Button(id, "Shuffle", 164, 89, 46, 15, _ => { Queue.Shuffle = !Queue.Shuffle; Draw(id); });
-            Button(id, "Repeat", 210, 89, 28, 15, _ => { Queue.Repeat = !Queue.Repeat; Draw(id); });
+            Button(id, "Shuffle", 164, 89, 46, 15, _ => ToggleShuffle());
+            Button(id, "Repeat", 210, 89, 28, 15, _ => ToggleRepeat());
             Button(id, "Equalizer", 219, 58, 23, 12, _ => Toggle(PanelId.Equalizer));
             Button(id, "Playlist", 242, 58, 23, 12, _ => Toggle(PanelId.Playlist));
             Button(id, "Time display", 37, 24, 63, 16, _ => { _remaining = !_remaining; DrawAll(); });
@@ -77,7 +77,7 @@ public sealed partial class ClassicPlayerView
             }
             Button(id, "Enable equalizer", 14, 18, 26, 12, _ =>
             {
-                if (_loaded is not null && !Engine.SupportsDsp) { Notify("EQUALIZER UNAVAILABLE FOR THIS OUTPUT"); return; }
+                if (_spotifyActive || _loaded is not null && !Engine.SupportsDsp) { Notify("EQUALIZER UNAVAILABLE FOR THIS OUTPUT"); return; }
                 _eq = !_eq; ApplyEq();
             });
             Button(id, "Auto presets", 40, 18, 32, 12, _ => { _auto = !_auto; if (_auto) RecallEq(); Draw(id); });
@@ -255,15 +255,21 @@ public sealed partial class ClassicPlayerView
     private void Zoom() { _doubleSize = !_doubleSize; ArrangeWorkspace(reset: !_windowMoved); }
     private void CycleVis()
     { _visMode = (_visMode + 1) % 3; Draw(PanelId.Main); }
-    private void SetVolume(double n) { Engine.Volume = Math.Clamp(n, 0, 1); Notify($"VOLUME {(int)(Engine.Volume * 100)}%"); Draw(PanelId.Equalizer); }
+    private void SetVolume(double n)
+    {
+        if (_spotifyActive) { _pendingSpotifyVolume = Math.Clamp(n, 0, 1); ScheduleSpotifyControls(); }
+        else Engine.Volume = Math.Clamp(n, 0, 1);
+        Notify($"VOLUME {(int)(CurrentVolume * 100)}%");
+        Draw(PanelId.Equalizer);
+    }
     private void SetBalance(double n)
     {
-        if (_loaded is not null && !Engine.SupportsDsp) { Notify("BALANCE UNAVAILABLE FOR THIS OUTPUT"); return; }
+        if (_spotifyActive || _loaded is not null && !Engine.SupportsDsp) { Notify("BALANCE UNAVAILABLE FOR THIS OUTPUT"); return; }
         Engine.Balance = Math.Abs(.5 - n) < .04 ? 0 : n * 2 - 1;
         Notify($"BALANCE {(Engine.Balance == 0 ? "CENTER" : $"{Math.Abs((int)(Engine.Balance * 100))}% {(Engine.Balance < 0 ? "LEFT" : "RIGHT")}")}");
         Draw(PanelId.Equalizer);
     }
-    private void SeekFraction(double n) { if (Engine.CanSeek) Engine.Seek(TimeSpan.FromSeconds(Engine.Duration.TotalSeconds * n)); Draw(PanelId.Main); }
+    private void SeekFraction(double n) { SeekCurrent(TimeSpan.FromSeconds(CurrentDuration.TotalSeconds * n)); Draw(PanelId.Main); }
     private void Transport(int i) => _ = Guard(i switch
     {
         0 => Previous, 1 => Play, 2 => Pause, 3 => Stop, 4 => () => Advance(true), _ => () => PickMedia(true)
@@ -272,11 +278,11 @@ public sealed partial class ClassicPlayerView
     private static bool Modifier(VirtualKey key) => (InputKeyboardSource.GetKeyStateForCurrentThread(key) & CoreVirtualKeyStates.Down) != 0;
     private void HandleKey(object sender, KeyRoutedEventArgs e)
     {
-        if (Engine.HasVideo && (e.Key == VirtualKey.F11 || (e.Key == VirtualKey.Escape && Engine.IsVideoFullscreen)))
+        if (!_spotifyActive && Engine.HasVideo && (e.Key == VirtualKey.F11 || (e.Key == VirtualKey.Escape && Engine.IsVideoFullscreen)))
         { e.Handled = true; _ = Guard(Engine.ToggleVideoFullscreenAsync); return; }
         if (_popupLayer is not null && e.Key == VirtualKey.Escape) { DismissClassicMenu(); e.Handled = true; return; }
-        if (Modifier(VirtualKey.Menu) && e.Key is VirtualKey.L or VirtualKey.B)
-        { e.Handled = true; if(e.Key==VirtualKey.L)ShowLibrary();else ShowMiniBrowser();return; }
+        if (Modifier(VirtualKey.Menu) && e.Key is VirtualKey.L or VirtualKey.B or VirtualKey.S)
+        { e.Handled = true; if (e.Key == VirtualKey.L) ShowLibrary(); else if (e.Key == VirtualKey.S) ShowSpotify(); else ShowMiniBrowser(); return; }
         if (e.OriginalSource is TextBox || (XamlRoot is {} root && FocusManager.GetFocusedElement(root) is TextBox)) return;
         bool ctrl = Modifier(VirtualKey.Control);
         e.Handled = true;
@@ -298,18 +304,18 @@ public sealed partial class ClassicPlayerView
         {
             case VirtualKey.Z: Transport(0); break;
             case VirtualKey.X: Transport(1); break;
-            case VirtualKey.C: case VirtualKey.Space: _ = Guard(Engine.IsPlaying ? Pause : Play); break;
+            case VirtualKey.C: case VirtualKey.Space: _ = Guard(CurrentIsPlaying ? Pause : Play); break;
             case VirtualKey.V: Transport(3); break;
             case VirtualKey.B: Transport(4); break;
             case VirtualKey.L: _ = Guard(() => PickMedia(true)); break;
             case VirtualKey.J: _ = Guard(Jump); break;
-            case VirtualKey.R: Queue.Repeat = !Queue.Repeat; Draw(PanelId.Main); break;
-            case VirtualKey.S: Queue.Shuffle = !Queue.Shuffle; Draw(PanelId.Main); break;
+            case VirtualKey.R: ToggleRepeat(); break;
+            case VirtualKey.S: ToggleShuffle(); break;
             case VirtualKey.Delete: RemoveSelected(false); break;
             case VirtualKey.Left: case VirtualKey.Right:
-                if (Engine.CanSeek) Engine.Seek(TimeSpan.FromSeconds(Math.Clamp(Engine.Position.TotalSeconds + (e.Key == VirtualKey.Left ? -5 : 5), 0, Engine.Duration.TotalSeconds)));
+                SeekCurrent(TimeSpan.FromSeconds(Math.Clamp(CurrentPosition.TotalSeconds + (e.Key == VirtualKey.Left ? -5 : 5), 0, CurrentDuration.TotalSeconds)));
                 break;
-            case VirtualKey.Up: case VirtualKey.Down: SetVolume(Engine.Volume + (e.Key == VirtualKey.Up ? .05 : -.05)); break;
+            case VirtualKey.Up: case VirtualKey.Down: SetVolume(CurrentVolume + (e.Key == VirtualKey.Up ? .05 : -.05)); break;
             default: e.Handled = false; break;
         }
     }

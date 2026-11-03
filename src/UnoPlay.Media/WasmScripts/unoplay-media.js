@@ -173,6 +173,7 @@
             if (!navigator.mediaSession || sessionOwner === this) return;
             sessionOwner = this;
             for (const action of transportActions) setAction(action, details => {
+                if (sessionOwner !== this) return;
                 if (action === "seekto") this.seek(details.seekTime);
                 else if (action === "seekforward" || action === "seekbackward") {
                     const offset = details.seekOffset ?? 5;
@@ -279,6 +280,11 @@
         play(id) { return players.get(id).play(); },
         pause(id) { players.get(id).pause(); },
         seek(id, seconds) { players.get(id).seek(seconds); },
+        mediaSession(id, active) {
+            const player = players.get(id);
+            if (sessionOwner === player) sessionOwner = undefined;
+            if (active) player.activateSession();
+        },
         metadata(id, title, artist, album) {
             const player = players.get(id);
             player.tags = {title, artist, album};

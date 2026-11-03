@@ -35,6 +35,7 @@ public sealed partial class ClassicPlayerView
         {
             window.Visibility = Visibility.Collapsed;
             ReleaseToolFocus();
+            if (ReferenceEquals(window, _spotifyWindow)) _spotify.IsMonitoring = _spotifyActive;
             if (ReferenceEquals(window, _browserWindow))
                 StopBrowser();
             Focus(FocusState.Programmatic);
@@ -48,6 +49,7 @@ public sealed partial class ClassicPlayerView
         _auxActive = false;
         if (_libraryWindow is not null) { _libraryWindow.SetActive(false); Canvas.SetZIndex(_libraryWindow, 0); }
         if (_browserWindow is not null) { _browserWindow.SetActive(false); Canvas.SetZIndex(_browserWindow, 0); }
+        if (_spotifyWindow is not null) { _spotifyWindow.SetActive(false); Canvas.SetZIndex(_spotifyWindow, 0); }
         DrawAll();
     }
     private void FocusTool(ClassicWindowFrame window)
@@ -64,6 +66,11 @@ public sealed partial class ClassicPlayerView
         {
             _browserWindow.SetActive(_browserWindow == window);
             Canvas.SetZIndex(_browserWindow, _browserWindow == window ? 9 : 7);
+        }
+        if (_spotifyWindow is not null)
+        {
+            _spotifyWindow.SetActive(_spotifyWindow == window);
+            Canvas.SetZIndex(_spotifyWindow, _spotifyWindow == window ? 9 : 7);
         }
     }
     private static Button Command(string label, Action invoke)

@@ -80,6 +80,10 @@ jobs:
       - name: Verify native Windows cursor handles
         if: runner.os == 'Windows'
         run: dotnet run --project tests/Win32Cursors.Tests -c Release
+      - name: Verify Spotify authorization and loopback callbacks
+        run: |
+          dotnet run --project tests/Spotify.Tests -c Release
+          dotnet run --project tests/Spotify.Platform.Tests -c Release
       - name: Publish self-contained desktop application
         run: dotnet publish src/UnoPlay.App -c Release -f net10.0-desktop -p:UnoPlayTarget=net10.0-desktop -r ${{ matrix.rid }} --self-contained -o dist/UnoPlay
       - name: Package with executable permissions

@@ -6,6 +6,7 @@ const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 const { chromium } = require("playwright");
 const { documentPath, documentBody, verifyToolWindows } = require("./tools.cjs");
+const { verifySpotify } = require("../spotify/app.cjs");
 
 const root = path.resolve(process.argv[2] || "artifacts/site");
 const mime = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
@@ -121,6 +122,7 @@ const server = http.createServer((req, res) => {
         await ready();
         await skinVisible();
         if (!process.env.UNOPLAY_URL) await verifyToolWindows(page, url);
+        await verifySpotify(page, url);
         assert.deepEqual(errors, []);
         console.log("Published app passed cold startup, MP3 playback, pause, seek, panel toggles, saved settings, windowshade, skin upload, pixel color and restored skin.");
     } finally {

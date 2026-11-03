@@ -27,6 +27,8 @@ jobs:
           dotnet run -c Release --project tests/Core.Tests
           dotnet run -c Release --project tests/ClassicSkins.Tests
           dotnet run -c Release --project tests/Metadata.Tests -- src/UnoPlay.App/Assets/Media/first-light.mp3
+          dotnet run -c Release --project tests/Spotify.Tests
+          dotnet run -c Release --project tests/Spotify.Platform.Tests
       - run: dotnet publish src/UnoPlay.App -c Release -f net10.0-browserwasm -p:UnoPlayTarget=net10.0-browserwasm -o "${{ runner.temp }}/browser"
       - name: Test published browser application
         shell: bash
@@ -35,6 +37,7 @@ jobs:
           test -f "$site/index.html" && test -f "$site/media/first-light.mp3"
           npm ci --prefix tests/browser
           (cd tests/browser && npx playwright install --with-deps chromium)
+          NODE_PATH="$PWD/tests/browser/node_modules" node tests/spotify/sdk.cjs
           node tests/browser/app.cjs "$site"
       - name: Verify media decoding and DSP
         run: |

@@ -35,7 +35,7 @@ public sealed partial class ClassicPlayerView
     {
         var panel = _videoFrame;
         if (panel is null) return;
-        bool show = Engine.HasVideo && _videoEnabled;
+        bool show = !_spotifyActive && Engine.HasVideo && _videoEnabled;
         panel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         _video.Opacity = show ? 1 : 0;
         _video.IsHitTestVisible = show;

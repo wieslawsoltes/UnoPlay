@@ -6,11 +6,15 @@
     <Project Path="src/UnoPlay.Core/UnoPlay.Core.csproj" />
     <Project Path="src/UnoPlay.Media/UnoPlay.Media.csproj" />
     <Project Path="src/UnoPlay.Metadata/UnoPlay.Metadata.csproj" />
+    <Project Path="src/UnoPlay.Spotify/UnoPlay.Spotify.csproj" />
+    <Project Path="src/UnoPlay.Spotify.Uno/UnoPlay.Spotify.Uno.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Win32Cursors.Tests/Win32Cursors.Tests.csproj" />
     <Project Path="tests/Core.Tests/Core.Tests.csproj" />
     <Project Path="tests/Metadata.Tests/Metadata.Tests.csproj" />
+    <Project Path="tests/Spotify.Tests/Spotify.Tests.csproj" />
+    <Project Path="tests/Spotify.Platform.Tests/Spotify.Platform.Tests.csproj" />
     <Project Path="tests/ClassicSkins.Tests/ClassicSkins.Tests.csproj" />
     <Project Path="tests/media/DesktopAudio.Tests/DesktopAudio.Tests.csproj" />
   </Folder>
