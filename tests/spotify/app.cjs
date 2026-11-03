@@ -114,7 +114,7 @@ async function verifySpotify(page, appUrl) {
     await page.getByText(/Spotify…/).first().click();
     const window = page.locator(".uno-classicwindowframe").filter({hasText:"Close Spotify"});
     await window.waitFor({state:"visible"});
-    const client = window.getByRole("textbox", {name:"Spotify client ID"});
+    const client = window.getByPlaceholder("Public client ID from Spotify for Developers", {exact:true});
     await client.fill(clientId);
     await window.getByRole("button", {name:"Sign in with Spotify",exact:true}).click();
     await window.getByText("UnoPlay Tester",{exact:true}).waitFor({timeout:90000});
@@ -145,7 +145,7 @@ async function verifySpotify(page, appUrl) {
     await page.getByText("Add to playback queue",{exact:true}).click();
     await page.waitForTimeout(200);
     assert.ok(requests.some(request => request.pathname === "/v1/me/player/queue" && request.method === "POST" && request.query.uri === track.uri));
-    await window.getByRole("textbox",{name:"Search Spotify",exact:true}).fill("Fixture");
+    await window.getByPlaceholder("Search Spotify",{exact:true}).fill("Fixture");
     await window.getByRole("button",{name:"Search",exact:true}).click();
     await window.getByText("Tracks matching “Fixture”",{exact:true}).waitFor();
     assert.ok(requests.some(request => request.pathname === "/v1/search" && request.query.limit === "10"));

@@ -39,10 +39,10 @@ const server = http.createServer((req, res) => {
 
 (async () => {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-    let browser;
+    let browser, page;
     try {
         browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ["--disable-dev-shm-usage"] });
-        const page = await browser.newPage({ viewport: { width: 1060, height: 820 } });
+        page = await browser.newPage({ viewport: { width: 1060, height: 820 } });
         const errors = [];
         // Exercise the HTML file chooser used by browsers without the File System Access API.
         await page.addInitScript(() => { delete window.showOpenFilePicker; });
@@ -125,6 +125,11 @@ const server = http.createServer((req, res) => {
         await verifySpotify(page, url);
         assert.deepEqual(errors, []);
         console.log("Published app passed cold startup, MP3 playback, pause, seek, panel toggles, saved settings, windowshade, skin upload, pixel color and restored skin.");
+    } catch (error) {
+        fs.mkdirSync("artifacts", {recursive:true});
+        await page?.screenshot({path:"artifacts/browser-error.png", fullPage:true}).catch(() => {});
+        if (page) fs.writeFileSync("artifacts/browser-error.txt", await page.locator("body").innerText().catch(() => "Page unavailable"));
+        throw error;
     } finally {
         await browser?.close();
         await new Promise(resolve => server.close(resolve));

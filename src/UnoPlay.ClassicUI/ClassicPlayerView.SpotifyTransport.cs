@@ -40,7 +40,7 @@ public sealed partial class ClassicPlayerView
         _spotify.Changed += SpotifyChanged;
         _spotify.Error += SpotifyError;
         await _spotify.InitializeAsync();
-        if (_spotify.IsSignedIn && !_disposed) ShowSpotify();
+        if ((_spotify.IsSignedIn || _spotify.HadAuthorizationResponse) && !_disposed) ShowSpotify();
     }
 
     private void SpotifyChanged(object? sender, EventArgs e) => OnUi(() =>

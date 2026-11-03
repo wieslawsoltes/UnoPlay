@@ -52,8 +52,19 @@ string wrongState = await SendAsync(redirect, "/spotify/callback?state=incorrect
 Check(wrongState.StartsWith("HTTP/1.1 400") && !signIn.IsCompleted && tokenHandler.Count == 0, "Wrong OAuth state ignored without exchange");
 string malformed = await SendAsync(redirect, "/spotify/callback", "POST /spotify/callback HTTP/1.1\r\nHost: localhost\r\n\r\n");
 Check(malformed.StartsWith("HTTP/1.1 404") && tokenHandler.Count == 0, "Unexpected methods cannot exchange a token");
-string oversized = await SendAsync(redirect, "", "GET /spotify/callback?state=" + new string('x', 9000) + " HTTP/1.1\r\nHost: localhost\r\n\r\n");
-Check(oversized.StartsWith("HTTP/1.1 404") && tokenHandler.Count == 0, "Oversized requests cannot exchange a token");
+bool oversizedRejected;
+try
+{
+    string oversized = await SendAsync(redirect, "", "GET /spotify/callback?state=" + new string('x', 9000) + " HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    oversizedRejected = oversized.StartsWith("HTTP/1.1 404");
+}
+catch (IOException error) when (error.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
+{
+    // The listener bounds requests to 8 KiB. Closing with unread oversized data
+    // can reset this deliberate malformed connection on Windows.
+    oversizedRejected = true;
+}
+Check(oversizedRejected && !signIn.IsCompleted && tokenHandler.Count == 0, "Oversized requests cannot exchange a token");
 string duplicateState = await SendAsync(redirect, "/spotify/callback?state=" + authQuery["state"] + "&state=" + authQuery["state"] + "&code=unused");
 Check(duplicateState.StartsWith("HTTP/1.1 400") && tokenHandler.Count == 0, "Duplicate OAuth state rejected");
 // A client can disappear while the listener is reading. The next valid callback must still be accepted.

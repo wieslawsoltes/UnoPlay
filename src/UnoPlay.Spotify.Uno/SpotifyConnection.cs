@@ -40,6 +40,7 @@ public sealed class SpotifyConnection : IDisposable
 
     public string ClientId { get; private set; } = "";
     public bool IsSignedIn => _session?.IsSignedIn == true;
+    public bool HadAuthorizationResponse { get; private set; }
     public SpotifyProfile? Profile { get; private set; }
     public SpotifyPlaybackState? Playback { get; private set; }
     public SpotifyWebApi Api => _api ?? throw new SpotifyAuthenticationException("Enter your Spotify app Client ID and sign in.");
@@ -96,10 +97,13 @@ public sealed class SpotifyConnection : IDisposable
     {
         try
         {
+#if UNOPLAY_BROWSER
+            HadAuthorizationResponse = SpotifyBrowserAuthorization.Callback().Length > 0;
+#endif
             if (string.IsNullOrWhiteSpace(ClientId))
             {
 #if UNOPLAY_BROWSER
-                if (SpotifyBrowserAuthorization.Callback().Length > 0)
+                if (HadAuthorizationResponse)
                 {
                     SpotifyBrowserAuthorization.ClearCallback();
                     throw new SpotifyAuthenticationException("Enter your Spotify Client ID and start sign-in again.");

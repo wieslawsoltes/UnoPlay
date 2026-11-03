@@ -43,6 +43,15 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y ffmpeg
           NODE_PATH="$PWD/tests/browser/node_modules" node tests/media/playback.cjs
+      - name: Preserve failed browser test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics
+          path: |
+            artifacts/browser-error.*
+            ${{ runner.temp }}/browser/wwwroot
+          retention-days: 3
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/browser/wwwroot
