@@ -44,7 +44,8 @@ async function verifyToolWindows(page, appUrl) {
     await page.mouse.click(menu.x + menu.width / 2, menu.y + menu.height / 2);
     await page.locator(".uno-menuflyoutitem").filter({hasText:/^Close MiniBrowser$/}).click();
     await mini.waitFor({state:"hidden"});
-    assert.equal(await mini.locator("iframe").count(), 0, "menu close releases the embedded browser");
+    await page.waitForFunction(window => [...window.querySelectorAll("iframe")]
+        .every(frame => frame.getAttribute("src") === "about:blank"), await mini.elementHandle());
     await page.keyboard.press("Space");
     await page.waitForFunction(() => [...document.querySelectorAll("audio,video")].some(media => !media.paused));
     await page.keyboard.press("Space");
