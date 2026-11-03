@@ -49,6 +49,8 @@ For cross-origin radio without CORS permission, UnoPlay retries direct media pla
 
 Open **Options → Spotify** or press **Alt+S**. Enter the public Client ID from your Spotify developer app and choose **Sign in with Spotify**. Authorization runs on Spotify’s sign-in page using Authorization Code with PKCE S256. UnoPlay refreshes access tokens automatically.
 
+For a shared deployment, set the repository Actions variable `SPOTIFY_CLIENT_ID` before building. Both workflows embed that public identifier as the default for browser and desktop apps. Local builds accept `-p:SpotifyClientId=YOUR_CLIENT_ID`. A client ID entered in the setup window takes precedence on that device.
+
 Create your developer app with **Web API** and **Web Playback SDK** enabled. Register the redirects for the hosts you use.
 
 | Host | Registered redirect URI |
@@ -106,6 +108,8 @@ Set `VERSION` to the new stable version (for example, `1.1.0`) and add its notes
 | `UnoPlay.App` | Browser and desktop entry points |
 
 Embed `new ClassicPlayerView()` in a Uno window, or pass your own `PlayerEngine` and `PlayQueue`. Call `RestorePreferencesAsync()` to opt in to persistence. Call `Shutdown()` when permanently removing the view. The host retains ownership of any engine it supplies.
+
+Spotify hosts can pass `new SpotifyConnection(clientId: publicClientId)` to `ClassicPlayerView`, or supply it alongside their media engine and queue. The host retains ownership of supplied connections. The portable `SpotifySession` and `SpotifyWebApi` also work independently of Uno with an injected `HttpClient`.
 
 ## Compatibility and verification
 

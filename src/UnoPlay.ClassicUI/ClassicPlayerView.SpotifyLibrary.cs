@@ -156,6 +156,7 @@ public sealed partial class ClassicPlayerView
         void Add(string label, Func<Task> action, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled };
+            AutomationProperties.SetAutomationId(item, "SpotifyItemAction" + label.Replace(" ", ""));
             item.Click += (_, _) => _ = RunSpotify(action);
             menu.Items.Add(item);
         }
@@ -197,6 +198,7 @@ public sealed partial class ClassicPlayerView
         void Add(string label, Func<Task> action, bool enabled = true)
         {
             var item = new MenuFlyoutItem { Text = label, IsEnabled = enabled && _spotifyBusy == 0 };
+            AutomationProperties.SetAutomationId(item, "SpotifyPlaylistAction" + label.Replace(" ", ""));
             item.Click += (_, _) => _ = RunSpotify(action);
             menu.Items.Add(item);
         }
@@ -266,6 +268,12 @@ public sealed partial class ClassicPlayerView
             var description = new TextBox { Header = "Description", Text = playlist?.Description ?? "", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Height = 85, MaxLength = 300 };
             var isPublic = new CheckBox { Content = "Public playlist", IsChecked = playlist?.IsPublic == true };
             var collaborative = new CheckBox { Content = "Collaborative playlist", IsChecked = playlist?.Collaborative == true };
+            AutomationProperties.SetName(name, "Spotify playlist name");
+            AutomationProperties.SetAutomationId(name, "SpotifyPlaylistName");
+            AutomationProperties.SetName(description, "Spotify playlist description");
+            AutomationProperties.SetAutomationId(description, "SpotifyPlaylistDescription");
+            AutomationProperties.SetAutomationId(isPublic, "SpotifyPlaylistPublic");
+            AutomationProperties.SetAutomationId(collaborative, "SpotifyPlaylistCollaborative");
             isPublic.Checked += (_, _) => collaborative.IsChecked = false;
             collaborative.Checked += (_, _) => isPublic.IsChecked = false;
             var content = new StackPanel { Spacing = 8, MinWidth = 240 };
@@ -295,8 +303,10 @@ public sealed partial class ClassicPlayerView
         {
             var list = new ListView { SelectionMode = ListViewSelectionMode.Single, DisplayMemberPath = nameof(SpotifyPlaylist.Name), Height = 210, FontSize = 12 };
             AutomationProperties.SetName(list, "Choose Spotify playlist");
+            AutomationProperties.SetAutomationId(list, "SpotifyDestinationPlaylist");
             var caption = new TextBlock { Text = "Choose a playlist you own or collaborate on.", TextWrapping = TextWrapping.Wrap, FontSize = 12 };
             var more = Command("Load more playlists", () => { });
+            AutomationProperties.SetAutomationId(more, "SpotifyLoadMorePlaylists");
             var content = new StackPanel { Spacing = 6, MinWidth = 240 };
             content.Children.Add(caption); content.Children.Add(list); content.Children.Add(more);
             var dialog = new ContentDialog { XamlRoot = XamlRoot, RequestedTheme = ElementTheme.Dark, Title = "Add to Spotify playlist", Content = content, PrimaryButtonText = "Add", CloseButtonText = "Cancel", IsPrimaryButtonEnabled = false };

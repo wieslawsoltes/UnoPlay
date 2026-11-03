@@ -45,13 +45,18 @@ public sealed partial class ClassicPlayerView : UserControl, IDisposable
     public event EventHandler? MinimizeRequested;
 
     public ClassicPlayerView() : this(new PlayerEngine(), new PlayQueue(), true) { }
+    public ClassicPlayerView(UnoPlay.Spotify.Uno.SpotifyConnection spotify) : this(new PlayerEngine(), new PlayQueue(), true, spotify) { }
     public ClassicPlayerView(PlayerEngine engine, PlayQueue queue) : this(engine, queue, false) { }
+    public ClassicPlayerView(PlayerEngine engine, PlayQueue queue, UnoPlay.Spotify.Uno.SpotifyConnection spotify)
+        : this(engine, queue, false, spotify) { }
 
-    private ClassicPlayerView(PlayerEngine engine, PlayQueue queue, bool ownsEngine)
+    private ClassicPlayerView(PlayerEngine engine, PlayQueue queue, bool ownsEngine, UnoPlay.Spotify.Uno.SpotifyConnection? spotify = null)
     {
         Engine = engine;
         Queue = queue;
         _ownsEngine = ownsEngine;
+        _spotify = spotify ?? new UnoPlay.Spotify.Uno.SpotifyConnection();
+        _ownsSpotify = spotify is null;
         IsTabStop = true;
         Content = _desk;
         RequestedTheme = ElementTheme.Dark;

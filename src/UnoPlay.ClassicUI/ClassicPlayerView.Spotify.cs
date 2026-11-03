@@ -72,6 +72,7 @@ public sealed partial class ClassicPlayerView
             Content = new Image { Source = new BitmapImage(new Uri("ms-appx:///Assets/spotify-logo.png")), Width = 94, Height = 28, Stretch = Stretch.Uniform }
         };
         AutomationProperties.SetName(logo, "Open Spotify");
+        AutomationProperties.SetAutomationId(logo, "SpotifyLogo");
         header.Children.Add(logo);
         _spotifyAccount = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(_spotifyAccount, 1);
@@ -86,10 +87,11 @@ public sealed partial class ClassicPlayerView
         });
         _spotifyClientId = new TextBox { Header = "Spotify app client ID", PlaceholderText = "Public client ID from Spotify for Developers", MaxLength = 32, FontSize = 12 };
         AutomationProperties.SetName(_spotifyClientId, "Spotify client ID");
+        AutomationProperties.SetAutomationId(_spotifyClientId, "SpotifyClientId");
         _spotifySetup.Children.Add(_spotifyClientId);
         var setupActions = SpotifyBar();
         setupActions.Children.Add(SpotifyButton("Sign in with Spotify", () => _spotify.SignInAsync(_spotifyClientId.Text.Trim())));
-        setupActions.Children.Add(Command("Setup instructions", () => _ = RunSpotify(SpotifySetupInstructions)));
+        setupActions.Children.Add(SpotifyButton("Setup instructions", SpotifySetupInstructions));
         _spotifySetup.Children.Add(SpotifyScrollBar(setupActions));
         layout.Children.Add(_spotifySetup);
 
@@ -99,13 +101,14 @@ public sealed partial class ClassicPlayerView
         accountActions.Children.Add(_spotifyConnect);
         accountActions.Children.Add(SpotifyButton("Refresh devices", RefreshSpotifyDevices));
         accountActions.Children.Add(SpotifyButton("Sign out", async () => { CancelSpotifyBrowse(); await _spotify.SignOutAsync(); UpdateSpotifyView(); }));
-        accountActions.Children.Add(Command("Account access", () => _ = Guard(() => OpenSpotifyWeb("https://www.spotify.com/account/apps/"))));
+        accountActions.Children.Add(SpotifyButton("Account access", () => OpenSpotifyWeb("https://www.spotify.com/account/apps/")));
         _spotifySignedIn.Children.Add(SpotifyScrollBar(accountActions));
         var deviceLine = new Grid { ColumnSpacing = 5 };
         deviceLine.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         deviceLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _spotifyDevices = new ComboBox { PlaceholderText = "Choose a Spotify Connect device", HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12, MinHeight = 28 };
         AutomationProperties.SetName(_spotifyDevices, "Spotify playback device");
+        AutomationProperties.SetAutomationId(_spotifyDevices, "SpotifyDevices");
         _spotifyDevices.SelectionChanged += (_, _) => UpdateSpotifyActions();
         deviceLine.Children.Add(_spotifyDevices);
         _spotifyTransfer = SpotifyButton("Use device", async () =>
@@ -135,10 +138,12 @@ public sealed partial class ClassicPlayerView
         searchLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _spotifySearch = new TextBox { PlaceholderText = "Search Spotify", FontSize = 12, MinWidth = 0, MinHeight = 28 };
         AutomationProperties.SetName(_spotifySearch, "Search Spotify");
+        AutomationProperties.SetAutomationId(_spotifySearch, "SpotifySearch");
         _spotifySearch.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; _ = RunSpotify(SearchSpotify); } };
         searchLine.Children.Add(_spotifySearch);
         _spotifySearchType = new ComboBox { ItemsSource = new[] { "Tracks", "Playlists", "Albums", "Artists" }, SelectedIndex = 0, FontSize = 11, MinHeight = 28 };
         AutomationProperties.SetName(_spotifySearchType, "Spotify search type");
+        AutomationProperties.SetAutomationId(_spotifySearchType, "SpotifySearchType");
         Grid.SetColumn(_spotifySearchType, 1);
         searchLine.Children.Add(_spotifySearchType);
         var searchButton = SpotifyButton("Search", SearchSpotify);
@@ -170,6 +175,7 @@ public sealed partial class ClassicPlayerView
             HorizontalContentAlignment = HorizontalAlignment.Stretch, FontSize = 12, Height = 175
         };
         AutomationProperties.SetName(_spotifyItems, "Spotify library items");
+        AutomationProperties.SetAutomationId(_spotifyItems, "SpotifyLibraryItems");
         _spotifyItems.SelectionChanged += (_, _) => UpdateSpotifyActions();
         _spotifyItems.DoubleTapped += (_, _) => _ = RunSpotify(OpenSpotifySelection);
         _spotifyItems.KeyDown += (_, e) => { if (e.Key == VirtualKey.Enter) { e.Handled = true; _ = RunSpotify(OpenSpotifySelection); } };
@@ -178,8 +184,10 @@ public sealed partial class ClassicPlayerView
         _spotifyPlaySelected = SpotifyButton("Play selected", PlaySpotifySelection);
         listActions.Children.Add(_spotifyPlaySelected);
         _spotifyActions = Command("Item actions", ShowSpotifyItemMenu);
+        AutomationProperties.SetAutomationId(_spotifyActions, "SpotifyItemActions");
         listActions.Children.Add(_spotifyActions);
         _spotifyPlaylistActions = Command("Playlist actions", ShowSpotifyPlaylistMenu);
+        AutomationProperties.SetAutomationId(_spotifyPlaylistActions, "SpotifyPlaylistActions");
         listActions.Children.Add(_spotifyPlaylistActions);
         listActions.Children.Add(SpotifyButton("Refresh list", RefreshSpotifyPage));
         Row(_spotifyContent, SpotifyScrollBar(listActions), 4);
@@ -188,6 +196,7 @@ public sealed partial class ClassicPlayerView
         layout.Children.Add(BuildSpotifyTransport());
         _spotifyStatus = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         AutomationProperties.SetName(_spotifyStatus, "Spotify status");
+        AutomationProperties.SetAutomationId(_spotifyStatus, "SpotifyStatus");
         AutomationProperties.SetLiveSetting(_spotifyStatus, AutomationLiveSetting.Polite);
         layout.Children.Add(_spotifyStatus);
         _spotifyWindow.Client = new ScrollViewer
@@ -212,9 +221,11 @@ public sealed partial class ClassicPlayerView
         now.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _spotifyArtwork = new Image { Width = 64, Height = 64, Stretch = Stretch.Uniform };
         AutomationProperties.SetName(_spotifyArtwork, "Spotify album artwork");
+        AutomationProperties.SetAutomationId(_spotifyArtwork, "SpotifyArtwork");
         now.Children.Add(_spotifyArtwork);
         var details = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         _spotifyTrackLink = new HyperlinkButton { Content = "Open Spotify", NavigateUri = new Uri("https://open.spotify.com/"), Padding = new Thickness(0), FontSize = 12, HorizontalAlignment = HorizontalAlignment.Left };
+        AutomationProperties.SetAutomationId(_spotifyTrackLink, "SpotifyCurrentTrack");
         _spotifyTrackDetails = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, MaxLines = 3 };
         details.Children.Add(_spotifyTrackLink);
         details.Children.Add(_spotifyTrackDetails);
@@ -224,6 +235,7 @@ public sealed partial class ClassicPlayerView
 
         _spotifySeek = new Slider { Minimum = 0, Maximum = 1, StepFrequency = 1, MinHeight = 20, IsEnabled = false };
         AutomationProperties.SetName(_spotifySeek, "Spotify seek");
+        AutomationProperties.SetAutomationId(_spotifySeek, "SpotifySeek");
         _spotifySeek.ValueChanged += (_, _) => { if (!_spotifyUpdatingTransport) _spotifySeekPending = true; };
         _spotifySeek.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => CommitSpotifySeek()), true);
         _spotifySeek.KeyUp += (_, _) => CommitSpotifySeek();
@@ -238,11 +250,14 @@ public sealed partial class ClassicPlayerView
         controls.Children.Add(_spotifyPlayPause);
         controls.Children.Add(_spotifyNext);
         _spotifyShuffle = new CheckBox { Content = "Shuffle", FontSize = 11, MinWidth = 0, MinHeight = 26 };
+        AutomationProperties.SetName(_spotifyShuffle, "Spotify shuffle");
+        AutomationProperties.SetAutomationId(_spotifyShuffle, "SpotifyShuffle");
         _spotifyShuffle.Checked += SpotifyShuffleChanged;
         _spotifyShuffle.Unchecked += SpotifyShuffleChanged;
         controls.Children.Add(_spotifyShuffle);
         _spotifyRepeat = new ComboBox { ItemsSource = new[] { "Repeat off", "Repeat context", "Repeat track" }, SelectedIndex = 0, FontSize = 11, MinHeight = 26 };
         AutomationProperties.SetName(_spotifyRepeat, "Spotify repeat mode");
+        AutomationProperties.SetAutomationId(_spotifyRepeat, "SpotifyRepeatMode");
         _spotifyRepeat.SelectionChanged += (_, _) =>
         {
             if (!_spotifyUpdatingTransport)
@@ -251,6 +266,7 @@ public sealed partial class ClassicPlayerView
         controls.Children.Add(_spotifyRepeat);
         _spotifyVolume = new Slider { Minimum = 0, Maximum = 100, Value = 100, StepFrequency = 1, Width = 90, MinHeight = 26 };
         AutomationProperties.SetName(_spotifyVolume, "Spotify volume");
+        AutomationProperties.SetAutomationId(_spotifyVolume, "SpotifyVolume");
         ToolTipService.SetToolTip(_spotifyVolume, "Spotify volume");
         _spotifyVolume.ValueChanged += (_, _) => { if (!_spotifyUpdatingTransport) _spotifyVolumePending = true; };
         _spotifyVolume.AddHandler(PointerReleasedEvent, new PointerEventHandler((_, _) => CommitSpotifyVolume()), true);
@@ -267,7 +283,12 @@ public sealed partial class ClassicPlayerView
         Content = content, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
         VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Left
     };
-    private Button SpotifyButton(string label, Func<Task> action) => Command(label, () => _ = RunSpotify(action));
+    private Button SpotifyButton(string label, Func<Task> action)
+    {
+        var button = Command(label, () => _ = RunSpotify(action));
+        AutomationProperties.SetAutomationId(button, "Spotify" + label.Replace(" ", ""));
+        return button;
+    }
 
     private async Task RunSpotify(Func<Task> action)
     {

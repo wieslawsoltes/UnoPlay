@@ -28,13 +28,14 @@ public sealed class SpotifyConnection : IDisposable
     private string? _browserDeviceId;
 #endif
 
-    public SpotifyConnection(HttpClient? http = null)
+    public SpotifyConnection(HttpClient? http = null, string? clientId = null)
     {
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         _ownsHttp = http is null;
         _dispatcher = DispatcherQueue.GetForCurrentThread();
-        if (ApplicationData.Current.LocalSettings.Values.TryGetValue(ClientKey, out var value) && value is string clientId)
-            ClientId = clientId;
+        ClientId = clientId?.Trim() ?? "";
+        if (ApplicationData.Current.LocalSettings.Values.TryGetValue(ClientKey, out var value) && value is string savedClientId)
+            ClientId = savedClientId;
         _poll.Tick += PollPlayback;
     }
 

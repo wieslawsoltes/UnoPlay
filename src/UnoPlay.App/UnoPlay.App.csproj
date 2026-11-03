@@ -26,6 +26,7 @@
     <Content Include="../UnoPlay.Media/BrowserVendor/*" Link="media/%(Filename)%(Extension)" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <AssemblyMetadata Include="SpotifyClientId" Value="$(SpotifyClientId)" Condition="'$(SpotifyClientId)' != ''" />
     <UnoIcon Include="Assets/player.svg" />
     <UnoSplashScreen Include="Assets/launch.svg" Color="#151922" BaseSize="72,72" />
     <Content Include="Assets/Media/first-light.mp3" Link="media/first-light.mp3" UnoDeploy="Root" CopyToOutputDirectory="PreserveNewest" />

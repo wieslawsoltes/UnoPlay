@@ -9,7 +9,8 @@ namespace UnoPlay.ClassicUI;
 
 public sealed partial class ClassicPlayerView
 {
-    private readonly SpotifyConnection _spotify = new();
+    private readonly SpotifyConnection _spotify;
+    private readonly bool _ownsSpotify;
     private bool _spotifyActive, _spotifyInitialized, _sendingSpotifyControls;
     private readonly SemaphoreSlim _transportChange = new(1, 1);
     private DispatcherTimer? _spotifyControls;
@@ -233,6 +234,6 @@ public sealed partial class ClassicPlayerView
         _spotifyControls?.Stop();
         _spotify.Changed -= SpotifyChanged;
         _spotify.Error -= SpotifyError;
-        _spotify.Dispose();
+        if (_ownsSpotify) _spotify.Dispose();
     }
 }
