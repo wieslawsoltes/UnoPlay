@@ -44,6 +44,12 @@ window.onSpotifyWebPlaybackSDKReady();
 async function verifySpotify(page, appUrl) {
     const requests = [];
     const grants = [];
+    const playlistTracks = Array.from({length:51}, (_, index) => {
+        if (index === 1) return null;
+        if (index === 2) return {...track, id:null, uri:"spotify:local:Fixture:Album:Local+song:180", name:"Local fixture song", is_local:true};
+        return {...track, name:index === 0 ? track.name : index === 50 ? "Final fixture track" : `Fixture song ${index + 1}`};
+    });
+    let snapshot = "snapshot-one";
     let authorization, profileCalls = 0, created = false, authorizationOutcome = "success";
     const json = (route, body, status = 200) => route.fulfill({ status, headers: {
         "Content-Type": "application/json", "Access-Control-Allow-Origin": "*",
@@ -90,12 +96,20 @@ async function verifySpotify(page, appUrl) {
         }
         if (pathname === "/v1/me/playlists" && method === "POST") { created = true; return json(route, {...playlist,name:body.name,items:{total:0}}, 201); }
         if (pathname === "/v1/me/playlists") return json(route, {items:[playlist],offset:0,limit:50,total:1,next:null});
-        if (pathname === `/v1/playlists/${playlistId}`) return json(route, {...playlist, name: created ? "Created in UnoPlay" : playlist.name});
+        if (pathname === `/v1/playlists/${playlistId}`) return json(route, {...playlist, snapshot_id:snapshot, name: created ? "Created in UnoPlay" : playlist.name});
         if (pathname === `/v1/playlists/${playlistId}/items` && method === "GET") {
             const offset = Number(url.searchParams.get("offset") || 0);
-            const items = created ? [] : offset === 50 ? [{item:{...track,name:"Final fixture track"},added_at:"2026-01-01T00:00:00Z"}]
-                : Array.from({length:50}, (_, i) => ({item:{...track,name:i === 0 ? track.name : `Fixture song ${i + 1}`},added_at:"2026-01-01T00:00:00Z"}));
+            const items = created ? [] : playlistTracks.slice(offset, offset + 50)
+                .map(item => ({item,added_at:"2026-01-01T00:00:00Z"}));
             return json(route, {items,offset,limit:50,total:created ? 0 : 51,next:!created && offset === 0 ? `https://api.spotify.com/v1/playlists/${playlistId}/items?offset=50&limit=50` : null});
+        }
+        if (pathname === `/v1/playlists/${playlistId}/items` && method === "PUT" && Number.isInteger(body.range_start)) {
+            assert.equal(body.snapshot_id, snapshot);
+            const [item] = playlistTracks.splice(body.range_start, 1);
+            const position = body.insert_before > body.range_start ? body.insert_before - 1 : body.insert_before;
+            playlistTracks.splice(position, 0, item);
+            snapshot += "-next";
+            return json(route,{snapshot_id:snapshot});
         }
         if (pathname.endsWith("/items") && method !== "GET") return json(route,{snapshot_id:"snapshot-two"});
         if (pathname === "/v1/me/tracks") return json(route,{items:[{track,added_at:"2026-01-01T00:00:00Z"}],offset:0,limit:50,total:1,next:null});
@@ -130,6 +144,16 @@ async function verifySpotify(page, appUrl) {
 
     await window.getByText("Studio collection · UnoPlay Tester · 51 items",{exact:true}).dblclick();
     await window.getByText("1. Fixture song · Fixture artist · 3:00",{exact:true}).waitFor();
+    await window.getByText("2. Unavailable item",{exact:true}).click();
+    await button("Item actions").click();
+    await page.getByText("Move down",{exact:true}).click();
+    await window.getByText("3. Unavailable item",{exact:true}).waitFor();
+    assert.ok(requests.some(request => request.method === "PUT" && request.body?.range_start === 1 && request.body.insert_before === 3));
+    await window.getByText("2. Local fixture song · Fixture artist · 3:00 · local to Spotify",{exact:true}).click();
+    await button("Item actions").click();
+    await page.getByText("Move up",{exact:true}).click();
+    await window.getByText("1. Local fixture song · Fixture artist · 3:00 · local to Spotify",{exact:true}).waitFor();
+    assert.ok(requests.some(request => request.method === "PUT" && request.body?.range_start === 1 && request.body.insert_before === 0));
     await button("Next page").click();
     await window.getByText("51. Final fixture track · Fixture artist · 3:00",{exact:true}).waitFor();
     await button("Play selected").click();
@@ -176,7 +200,7 @@ async function verifySpotify(page, appUrl) {
     await page.getByRole("button",{name:"Play",exact:true}).waitFor({timeout:90000});
     await page.getByRole("button",{name:"Play",exact:true}).click();
     await page.waitForFunction(() => [...document.querySelectorAll("audio,video")].some(media => !media.paused));
-    console.log("Spotify published UI passed PKCE, history cleanup, automatic refresh, playlist pagination/context offsets, SDK transport, search, queue, playlist creation, logout, denied/mismatched callbacks and local-playback recovery using explicit fixtures.");
+    console.log("Spotify published UI passed PKCE, history cleanup, automatic refresh, playlist pagination/context offsets, reordering local/unavailable entries, SDK transport, search, queue, playlist creation, logout, denied/mismatched callbacks and local-playback recovery using explicit fixtures.");
 }
 
 module.exports = { verifySpotify };

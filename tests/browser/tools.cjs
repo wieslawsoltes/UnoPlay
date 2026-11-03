@@ -36,7 +36,20 @@ async function verifyToolWindows(page, appUrl) {
     await address.press("Enter");
     await mini.frameLocator("iframe").getByRole("heading", { name: "MiniBrowser navigation verified" }).waitFor();
     await close(mini, /^Close MiniBrowser$/);
-    console.log("Skinned media library filtering, window close, and explicit MiniBrowser navigation passed.");
+    await open(/MiniBrowser…/, "Close MiniBrowser");
+    await address.press("Enter");
+    await mini.frameLocator("iframe").getByRole("heading", { name: "MiniBrowser navigation verified" }).waitFor();
+    const menu = await mini.locator("div.uno-button").filter({hasText:/^Menu$/}).boundingBox();
+    assert.ok(menu, "MiniBrowser menu button");
+    await page.mouse.click(menu.x + menu.width / 2, menu.y + menu.height / 2);
+    await page.locator(".uno-menuflyoutitem").filter({hasText:/^Close MiniBrowser$/}).click();
+    await mini.waitFor({state:"hidden"});
+    assert.equal(await mini.locator("iframe").count(), 0, "menu close releases the embedded browser");
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => [...document.querySelectorAll("audio,video")].some(media => !media.paused));
+    await page.keyboard.press("Space");
+    await page.waitForFunction(() => [...document.querySelectorAll("audio,video")].every(media => media.paused));
+    console.log("Skinned media library filtering, both window close paths, restored transport shortcuts, and explicit MiniBrowser navigation passed.");
 }
 
 module.exports = { documentPath, documentBody, verifyToolWindows };

@@ -31,17 +31,18 @@ public sealed partial class ClassicPlayerView
         Canvas.SetLeft(window, Math.Max(0, Math.Round((ActualWidth - window.Width) / 2)));
         Canvas.SetTop(window, Math.Max(0, Math.Round((ActualHeight - window.Height) / 2)));
         window.FocusRequested += (_, _) => FocusTool(window);
-        window.CloseRequested += (_, _) =>
-        {
-            window.Visibility = Visibility.Collapsed;
-            ReleaseToolFocus();
-            if (ReferenceEquals(window, _spotifyWindow)) _spotify.IsMonitoring = _spotifyActive;
-            if (ReferenceEquals(window, _browserWindow))
-                StopBrowser();
-            Focus(FocusState.Programmatic);
-        };
+        window.CloseRequested += (_, _) => CloseTool(window);
         _desk.Children.Add(window);
         return window;
+    }
+    private void CloseTool(ClassicWindowFrame window)
+    {
+        window.Visibility = Visibility.Collapsed;
+        ReleaseToolFocus();
+        if (ReferenceEquals(window, _spotifyWindow)) _spotify.IsMonitoring = _spotifyActive;
+        if (ReferenceEquals(window, _browserWindow))
+            StopBrowser();
+        Focus(FocusState.Programmatic);
     }
     private void ReleaseToolFocus()
     {
@@ -334,7 +335,7 @@ public sealed partial class ClassicPlayerView
                 Add("Open in system browser", () => _ = Guard(async () => { if (IsHttp(_address?.Text, out var address)) await Launcher.LaunchUriAsync(address!); }));
                 Add("Play this address", () => _ = Guard(async () => { if (IsHttp(_address?.Text, out var address)) { int first = Queue.Tracks.Count; await AddLocation(address!); if (first < Queue.Tracks.Count) await PlayIndex(first); } }));
                 Add("Media library", ShowLibrary);
-                Add("Close MiniBrowser", () => _browserWindow.Visibility = Visibility.Collapsed);
+                Add("Close MiniBrowser", () => CloseTool(_browserWindow));
                 menu.ShowAt(_browserWindow, new Point(70, _browserWindow.Height - 17));
                 break;
         }

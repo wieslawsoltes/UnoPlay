@@ -179,13 +179,14 @@ public sealed partial class ClassicPlayerView
         {
             Add("Add to playback queue", () => _spotify.AddToQueueAsync(row.Track.Uri), row.Track.IsPlayable);
             Add("Add to playlist…", () => AddSpotifyToPlaylist(row.Track));
-            if (_spotifyCurrentPlaylist is { } current && CanEditSpotifyItems(current))
-            {
-                menu.Items.Add(new MenuFlyoutSeparator());
-                Add("Move up", () => MoveSpotifyItem(row, current, -1), row.Position > 0);
-                Add("Move down", () => MoveSpotifyItem(row, current, 1), row.Position + 1 < _spotifyTotal);
+        }
+        if (_spotifyCurrentPlaylist is { } current && CanEditSpotifyItems(current))
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            Add("Move up", () => MoveSpotifyItem(row, current, -1), row.Position > 0);
+            Add("Move down", () => MoveSpotifyItem(row, current, 1), row.Position + 1 < _spotifyTotal);
+            if (row.Track is not null && !row.Track.IsLocal)
                 Add("Remove all occurrences from playlist…", () => RemoveSpotifyPlaylistItem(row.Track, current));
-            }
         }
         menu.ShowAt(_spotifyActions!);
     }
