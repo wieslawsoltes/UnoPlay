@@ -44,7 +44,7 @@ window.onSpotifyWebPlaybackSDKReady();
 async function verifySpotify(page, appUrl) {
     const requests = [];
     const grants = [];
-    let authorization, profileCalls = 0, created = false;
+    let authorization, profileCalls = 0, created = false, authorizationOutcome = "success";
     const json = (route, body, status = 200) => route.fulfill({ status, headers: {
         "Content-Type": "application/json", "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "authorization,content-type", "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
@@ -58,8 +58,9 @@ async function verifySpotify(page, appUrl) {
         assert.equal(authorization.searchParams.get("redirect_uri"), appUrl);
         assert.ok(authorization.searchParams.get("state").length >= 32);
         const callback = new URL(appUrl);
-        callback.searchParams.set("code", "fixture-authorization-code");
-        callback.searchParams.set("state", authorization.searchParams.get("state"));
+        callback.searchParams.set(authorizationOutcome === "denied" ? "error" : "code",
+            authorizationOutcome === "denied" ? "access_denied" : "fixture-authorization-code");
+        callback.searchParams.set("state", authorizationOutcome === "mismatch" ? "incorrect-state" : authorization.searchParams.get("state"));
         await route.fulfill({ contentType: "text/html", body: `<!doctype html><title>Spotify authorization fixture</title><script>location.replace(${JSON.stringify(callback.href)})</script>` });
     });
     await page.route("https://accounts.spotify.com/api/token", async route => {
@@ -162,11 +163,20 @@ async function verifySpotify(page, appUrl) {
     await button("Sign in with Spotify").waitFor();
     assert.equal(await page.evaluate(() => sessionStorage.getItem("unoplay.spotify.token")), null);
     assert.ok(await page.evaluate(() => spotifyFixtureCalls.some(call => call[0] === "disconnect")));
+    authorizationOutcome = "denied";
+    await button("Sign in with Spotify").click();
+    await window.getByText("Spotify sign-in was cancelled.", {exact:true}).waitFor({timeout:90000});
+    assert.equal(grants.length, 2, "Consent denial must not exchange a token");
+    authorizationOutcome = "mismatch";
+    await button("Sign in with Spotify").click();
+    await window.getByText("Spotify sign-in state did not match. Start sign-in again.", {exact:true}).waitFor({timeout:90000});
+    assert.equal(grants.length, 2, "Mismatched OAuth state must not exchange a token");
+    assert.equal(new URL(page.url()).searchParams.has("code"), false);
     await page.reload();
     await page.getByRole("button",{name:"Play",exact:true}).waitFor({timeout:90000});
     await page.getByRole("button",{name:"Play",exact:true}).click();
     await page.waitForFunction(() => [...document.querySelectorAll("audio,video")].some(media => !media.paused));
-    console.log("Spotify published UI passed PKCE, history cleanup, automatic refresh, playlist pagination/context offsets, SDK transport, search, queue, playlist creation, logout and local-playback recovery using explicit fixtures.");
+    console.log("Spotify published UI passed PKCE, history cleanup, automatic refresh, playlist pagination/context offsets, SDK transport, search, queue, playlist creation, logout, denied/mismatched callbacks and local-playback recovery using explicit fixtures.");
 }
 
 module.exports = { verifySpotify };

@@ -283,6 +283,7 @@ public sealed partial class ClassicPlayerView
         if (_popupLayer is not null && e.Key == VirtualKey.Escape) { DismissClassicMenu(); e.Handled = true; return; }
         if (Modifier(VirtualKey.Menu) && e.Key is VirtualKey.L or VirtualKey.B or VirtualKey.S)
         { e.Handled = true; if (e.Key == VirtualKey.L) ShowLibrary(); else if (e.Key == VirtualKey.S) ShowSpotify(); else ShowMiniBrowser(); return; }
+        if (_auxActive) return;
         if (e.OriginalSource is TextBox || (XamlRoot is {} root && FocusManager.GetFocusedElement(root) is TextBox)) return;
         bool ctrl = Modifier(VirtualKey.Control);
         e.Handled = true;
